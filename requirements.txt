@@ -1,0 +1,26 @@
+# Core Django (Python 3.9 compatible)
+Django==4.2.11
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+
+# Django REST Framework (API)
+djangorestframework==3.14.0
+django-filter==23.5
+drf-spectacular==0.27.0
+
+# Task Queue
+django-q2==1.6.2
+redis==5.0.1
+
+# SNMP
+pysnmp-lextudio==6.0.4
+
+# Cryptography
+cryptography==41.0.7
+
+# Development
+ipython==8.18.1
+
+# Testing
+pytest==7.4.3
+pytest-django==4.7.0
