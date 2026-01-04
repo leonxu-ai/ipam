@@ -1,0 +1,161 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}IPAM{% endblock %} - 中创新航工厂IP地址管理系统</title>
+    <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+    <script defer src="{% static 'js/alpine.min.js' %}"></script>
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans antialiased">
+    <div class="flex min-h-screen">
+        <!-- 侧边栏 -->
+        <aside class="fixed left-0 top-0 h-full w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-40">
+            <!-- Logo区域 -->
+            <div class="flex items-center gap-3 px-5 py-5 border-b border-slate-800">
+                <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="12" cy="12" r="3"/>
+                        <circle cx="12" cy="4" r="2"/>
+                        <circle cx="12" cy="20" r="2"/>
+                        <circle cx="4" cy="12" r="2"/>
+                        <circle cx="20" cy="12" r="2"/>
+                        <path d="M12 7v2M12 15v2M7 12h2M15 12h2" stroke="currentColor" stroke-width="1.5"/>
+                    </svg>
+                </div>
+                <span class="text-lg font-semibold text-white">中创新航</span>
+            </div>
+
+            <!-- 导航菜单 -->
+            <nav class="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+                <a href="{% url 'ipam:dashboard' %}"
+                   class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                          {% if request.resolver_match.url_name == 'dashboard' %}
+                          bg-blue-600 text-white
+                          {% else %}
+                          text-slate-400 hover:bg-slate-800 hover:text-white
+                          {% endif %}">
+                    <span class="material-symbols-outlined text-xl">dashboard</span>
+                    仪表板
+                </a>
+                <a href="{% url 'ipam:subnet_list' %}"
+                   class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                          {% if 'subnet' in request.resolver_match.url_name %}
+                          bg-blue-600 text-white
+                          {% else %}
+                          text-slate-400 hover:bg-slate-800 hover:text-white
+                          {% endif %}">
+                    <span class="material-symbols-outlined text-xl">lan</span>
+                    子网管理
+                </a>
+                <a href="{% url 'ipam:ip_list' %}"
+                   class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                          {% if 'ip' in request.resolver_match.url_name %}
+                          bg-blue-600 text-white
+                          {% else %}
+                          text-slate-400 hover:bg-slate-800 hover:text-white
+                          {% endif %}">
+                    <span class="material-symbols-outlined text-xl">dns</span>
+                    IP 管理
+                </a>
+                <a href="{% url 'ipam:device_list' %}"
+                   class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                          {% if 'device' in request.resolver_match.url_name %}
+                          bg-blue-600 text-white
+                          {% else %}
+                          text-slate-400 hover:bg-slate-800 hover:text-white
+                          {% endif %}">
+                    <span class="material-symbols-outlined text-xl">router</span>
+                    网络设备
+                </a>
+                <a href="{% url 'ipam:audit_log_list' %}"
+                   class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                          {% if 'audit' in request.resolver_match.url_name %}
+                          bg-blue-600 text-white
+                          {% else %}
+                          text-slate-400 hover:bg-slate-800 hover:text-white
+                          {% endif %}">
+                    <span class="material-symbols-outlined text-xl">history</span>
+                    审计日志
+                </a>
+            </nav>
+
+            <!-- 用户信息 -->
+            <div class="border-t border-slate-800 p-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center text-slate-300">
+                        <span class="material-symbols-outlined">person</span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-white truncate">{{ request.user.username }}</p>
+                        <p class="text-xs text-slate-500">网络管理员</p>
+                    </div>
+                    <a href="{% url 'logout' %}" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors" title="退出登录">
+                        <span class="material-symbols-outlined text-xl">logout</span>
+                    </a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="flex-1 ml-64">
+            <!-- 顶部导航栏 -->
+            <header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800">
+                <div class="flex items-center justify-between px-6 py-4">
+                    <div class="flex items-center gap-4">
+                        <h1 class="text-xl font-semibold text-white">{% block page_title %}网络资源概览{% endblock %}</h1>
+                        {% block page_status %}
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <span class="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                            系统运行正常
+                        </span>
+                        {% endblock %}
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <!-- 搜索框 -->
+                        <div class="relative">
+                            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xl">search</span>
+                            <input type="text" placeholder="搜索 IP, 子网或设备..."
+                                   class="w-72 pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+                        <!-- 通知按钮 -->
+                        <button class="relative p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
+                            <span class="material-symbols-outlined text-xl">notifications</span>
+                            {% if unread_notifications %}
+                            <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                            {% endif %}
+                        </button>
+                        <!-- 帮助按钮 -->
+                        <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
+                            <span class="material-symbols-outlined text-xl">help</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- 页面内容 -->
+            <div class="p-6">
+                {% if messages %}
+                <div class="mb-6 space-y-3">
+                    {% for message in messages %}
+                    <div class="flex items-center gap-3 p-4 rounded-lg {% if message.tags == 'error' %}bg-red-500/10 text-red-400 border border-red-500/20{% elif message.tags == 'success' %}bg-emerald-500/10 text-emerald-400 border border-emerald-500/20{% elif message.tags == 'warning' %}bg-amber-500/10 text-amber-400 border border-amber-500/20{% else %}bg-blue-500/10 text-blue-400 border border-blue-500/20{% endif %}">
+                        <span class="material-symbols-outlined text-xl">
+                            {% if message.tags == 'error' %}error{% elif message.tags == 'success' %}check_circle{% elif message.tags == 'warning' %}warning{% else %}info{% endif %}
+                        </span>
+                        <span class="text-sm">{{ message }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

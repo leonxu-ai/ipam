@@ -72,3 +72,12 @@ package-lock.json
 # Documentation artifacts (keep source)
 calb-ipim.zip
 calb-ipim/
+
+# Backup files
+backups/
+*.sql.gz
+*.tar.gz
+
+# Logs
+logs/
+*.log

@@ -1,0 +1,338 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}审计日志{% endblock %}
+{% block page_title %}审计日志{% endblock %}
+{% block page_status %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- 工具栏 -->
+    <div class="flex flex-wrap items-center justify-between gap-4">
+        <form method="get" class="flex items-center gap-3 flex-wrap">
+            <!-- 搜索框 -->
+            <div class="relative">
+                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xl">search</span>
+                <input type="text" name="q" value="{{ search }}" placeholder="搜索 IP、用户..."
+                       class="w-64 pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+
+            <!-- 操作类型过滤 -->
+            <select name="action"
+                    class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onchange="this.form.submit()">
+                <option value="">所有操作</option>
+                <option value="allocate" {% if action_filter == 'allocate' %}selected{% endif %}>分配</option>
+                <option value="release" {% if action_filter == 'release' %}selected{% endif %}>释放</option>
+                <option value="update" {% if action_filter == 'update' %}selected{% endif %}>更新</option>
+                <option value="conflict_detected" {% if action_filter == 'conflict_detected' %}selected{% endif %}>冲突检测</option>
+                <option value="conflict_resolved" {% if action_filter == 'conflict_resolved' %}selected{% endif %}>冲突解决</option>
+                <option value="scan" {% if action_filter == 'scan' %}selected{% endif %}>扫描</option>
+            </select>
+
+            <!-- 日期范围 -->
+            <div class="flex items-center gap-2">
+                <input type="date" name="start_date" value="{{ start_date }}"
+                       class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <span class="text-slate-500">至</span>
+                <input type="date" name="end_date" value="{{ end_date }}"
+                       class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <button type="submit" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors">
+                筛选
+            </button>
+            <a href="{% url 'ipam:audit_log_list' %}" class="px-4 py-2 text-slate-400 hover:text-white text-sm transition-colors">
+                重置
+            </a>
+        </form>
+
+        <div class="flex items-center gap-3">
+            <button onclick="exportLogs()"
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors">
+                <span class="material-symbols-outlined text-xl">download</span>
+                导出
+            </button>
+        </div>
+    </div>
+
+    <!-- 统计摘要 -->
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+            <p class="text-sm text-slate-400">总记录</p>
+            <p class="text-2xl font-bold text-white">{{ stats.total }}</p>
+        </div>
+        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+            <p class="text-sm text-slate-400">今日操作</p>
+            <p class="text-2xl font-bold text-blue-400">{{ stats.today }}</p>
+        </div>
+        <div class="bg-slate-800/50 rounded-xl p-4 border border-emerald-500/20">
+            <p class="text-sm text-slate-400">分配</p>
+            <p class="text-2xl font-bold text-emerald-400">{{ stats.allocate }}</p>
+        </div>
+        <div class="bg-slate-800/50 rounded-xl p-4 border border-amber-500/20">
+            <p class="text-sm text-slate-400">释放</p>
+            <p class="text-2xl font-bold text-amber-400">{{ stats.release }}</p>
+        </div>
+        <div class="bg-slate-800/50 rounded-xl p-4 border border-red-500/20">
+            <p class="text-sm text-slate-400">冲突检测</p>
+            <p class="text-2xl font-bold text-red-400">{{ stats.conflict }}</p>
+        </div>
+        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+            <p class="text-sm text-slate-400">更新</p>
+            <p class="text-2xl font-bold text-slate-300">{{ stats.update }}</p>
+        </div>
+    </div>
+
+    <!-- 日志列表 -->
+    <div class="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-slate-900/50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">时间</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">操作员</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">动作</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">目标 IP</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">子网</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">详情</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50">
+                    {% for log in logs %}
+                    <tr class="hover:bg-slate-700/20 transition-colors">
+                        <td class="px-6 py-4 text-sm text-slate-400 whitespace-nowrap">
+                            <div>
+                                <p class="text-white">{{ log.timestamp|date:"Y-m-d" }}</p>
+                                <p class="text-slate-500 text-xs">{{ log.timestamp|date:"H:i:s" }}</p>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-medium text-white">
+                                    {{ log.user.username|slice:":1"|upper|default:"S" }}
+                                </div>
+                                <div>
+                                    <p class="text-sm text-white">{{ log.user.username|default:"系统" }}</p>
+                                    {% if log.source %}
+                                    <p class="text-xs text-slate-500">{{ log.source }}</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if log.action == 'allocate' %}
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-400">
+                                <span class="material-symbols-outlined text-sm">person_add</span>
+                                分配
+                            </span>
+                            {% elif log.action == 'release' %}
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-500/10 text-amber-400">
+                                <span class="material-symbols-outlined text-sm">person_remove</span>
+                                释放
+                            </span>
+                            {% elif log.action == 'update' %}
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-500/10 text-blue-400">
+                                <span class="material-symbols-outlined text-sm">edit</span>
+                                更新
+                            </span>
+                            {% elif log.action == 'conflict_detected' %}
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500/10 text-red-400">
+                                <span class="material-symbols-outlined text-sm">warning</span>
+                                冲突检测
+                            </span>
+                            {% elif log.action == 'conflict_resolved' %}
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-purple-500/10 text-purple-400">
+                                <span class="material-symbols-outlined text-sm">build</span>
+                                冲突解决
+                            </span>
+                            {% elif log.action == 'scan' %}
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-500/10 text-slate-400">
+                                <span class="material-symbols-outlined text-sm">radar</span>
+                                扫描
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-500/10 text-slate-400">
+                                <span class="material-symbols-outlined text-sm">info</span>
+                                {{ log.get_action_display }}
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if log.ip_address %}
+                            <a href="{% url 'ipam:ip_list' %}?q={{ log.ip_address }}" class="font-mono text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                                {{ log.ip_address }}
+                            </a>
+                            {% else %}
+                            <span class="text-sm text-slate-500">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-slate-400 whitespace-nowrap">
+                            {% if log.subnet %}
+                            <a href="{% url 'ipam:subnet_detail' log.subnet.id %}" class="hover:text-blue-400 transition-colors">
+                                {{ log.subnet.network }}
+                            </a>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-slate-400 max-w-md">
+                            {% if log.details %}
+                            <button onclick="showLogDetail({{ log.id }})"
+                                    class="text-left hover:text-white transition-colors truncate max-w-xs block"
+                                    title="{{ log.details }}">
+                                {{ log.details|truncatechars:50 }}
+                            </button>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-12 text-center text-sm text-slate-500">
+                            <span class="material-symbols-outlined text-4xl mb-2 block">history</span>
+                            暂无审计日志记录
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 分页 -->
+        {% if logs.has_other_pages %}
+        <div class="px-6 py-4 border-t border-slate-700/50 flex items-center justify-between">
+            <p class="text-sm text-slate-400">
+                共 {{ logs.paginator.count }} 条记录，当前第 {{ logs.number }} / {{ logs.paginator.num_pages }} 页
+            </p>
+            <div class="flex items-center gap-2">
+                {% if logs.has_previous %}
+                <a href="?page=1{% if search %}&q={{ search }}{% endif %}{% if action_filter %}&action={{ action_filter }}{% endif %}"
+                   class="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm transition-colors">
+                    首页
+                </a>
+                <a href="?page={{ logs.previous_page_number }}{% if search %}&q={{ search }}{% endif %}{% if action_filter %}&action={{ action_filter }}{% endif %}"
+                   class="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm transition-colors">
+                    上一页
+                </a>
+                {% endif %}
+
+                <span class="px-3 py-1 bg-blue-600 text-white rounded text-sm">{{ logs.number }}</span>
+
+                {% if logs.has_next %}
+                <a href="?page={{ logs.next_page_number }}{% if search %}&q={{ search }}{% endif %}{% if action_filter %}&action={{ action_filter }}{% endif %}"
+                   class="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm transition-colors">
+                    下一页
+                </a>
+                <a href="?page={{ logs.paginator.num_pages }}{% if search %}&q={{ search }}{% endif %}{% if action_filter %}&action={{ action_filter }}{% endif %}"
+                   class="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm transition-colors">
+                    末页
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 日志说明 -->
+    <div class="bg-slate-800/30 rounded-xl border border-slate-700/30 p-6">
+        <h4 class="text-sm font-medium text-slate-400 mb-4 flex items-center gap-2">
+            <span class="material-symbols-outlined text-lg">info</span>
+            审计日志说明
+        </h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+            <div class="flex items-start gap-3">
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-400">分配</span>
+                <p class="text-slate-500">IP 地址被分配给新设备时记录</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400">释放</span>
+                <p class="text-slate-500">IP 地址被释放回可用池时记录</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-500/10 text-blue-400">更新</span>
+                <p class="text-slate-500">IP 地址信息被修改时记录</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-red-500/10 text-red-400">冲突检测</span>
+                <p class="text-slate-500">SNMP 扫描发现 MAC 地址变化时记录</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-500/10 text-purple-400">冲突解决</span>
+                <p class="text-slate-500">管理员处理 IP 冲突时记录</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-slate-500/10 text-slate-400">扫描</span>
+                <p class="text-slate-500">网络设备执行 SNMP 扫描时记录</p>
+            </div>
+        </div>
+        <p class="mt-4 text-xs text-slate-600">
+            <span class="material-symbols-outlined text-sm align-middle">lock</span>
+            审计日志受数据库触发器保护，不可修改或删除，确保操作可追溯性。
+        </p>
+    </div>
+</div>
+
+<!-- 日志详情弹窗 -->
+<div id="log-detail-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden z-50 flex items-center justify-center">
+    <div class="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl mx-4 shadow-2xl">
+        <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white">日志详情</h3>
+            <button onclick="closeLogModal()" class="p-1 text-slate-400 hover:text-white rounded transition-colors">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="p-6" id="log-detail-content">
+            <!-- 动态内容 -->
+        </div>
+    </div>
+</div>
+
+<script>
+function showLogDetail(logId) {
+    fetch(`/api/audit-logs/${logId}/`)
+        .then(response => response.json())
+        .then(data => {
+            let html = `
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-sm text-slate-400">时间</p>
+                            <p class="text-white">${new Date(data.timestamp).toLocaleString()}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-400">操作员</p>
+                            <p class="text-white">${data.user?.username || '系统'}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-400">操作</p>
+                            <p class="text-white">${data.action}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-400">IP 地址</p>
+                            <p class="text-white font-mono">${data.ip_address || '-'}</p>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-sm text-slate-400 mb-2">详细信息</p>
+                        <pre class="p-4 bg-slate-900 rounded-lg text-sm text-slate-300 overflow-x-auto">${data.details || '无'}</pre>
+                    </div>
+                </div>
+            `;
+            document.getElementById('log-detail-content').innerHTML = html;
+            document.getElementById('log-detail-modal').classList.remove('hidden');
+        });
+}
+
+function closeLogModal() {
+    document.getElementById('log-detail-modal').classList.add('hidden');
+}
+
+function exportLogs() {
+    const params = new URLSearchParams(window.location.search);
+    params.set('format', 'csv');
+    window.location.href = `/api/audit-logs/export/?${params.toString()}`;
+}
+</script>
+{% endblock %}

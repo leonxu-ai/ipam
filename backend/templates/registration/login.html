@@ -1,0 +1,124 @@
+{% extends 'base_auth.html' %}
+{% load static %}
+
+{% block title %}登录{% endblock %}
+
+{% block content %}
+<div class="w-full max-w-md" x-data="{ showPassword: false }">
+    <!-- 登录卡片 -->
+    <div class="bg-slate-800/50 backdrop-blur rounded-2xl border border-slate-700/50 overflow-hidden shadow-2xl">
+        <!-- 顶部装饰图案 -->
+        <div class="h-32 bg-gradient-to-br from-slate-800 to-slate-900 relative overflow-hidden">
+            <!-- 网格线装饰 -->
+            <svg class="absolute inset-0 w-full h-full opacity-30" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                        <circle cx="10" cy="10" r="1" fill="rgba(59,130,246,0.5)"/>
+                    </pattern>
+                    <linearGradient id="fade" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:rgba(59,130,246,0.3);stop-opacity:1"/>
+                        <stop offset="100%" style="stop-color:rgba(59,130,246,0);stop-opacity:1"/>
+                    </linearGradient>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid)"/>
+                <!-- 连接线 -->
+                <line x1="20" y1="20" x2="80" y2="60" stroke="rgba(59,130,246,0.4)" stroke-width="1"/>
+                <line x1="80" y1="60" x2="150" y2="40" stroke="rgba(59,130,246,0.4)" stroke-width="1"/>
+                <line x1="150" y1="40" x2="220" y2="80" stroke="rgba(59,130,246,0.4)" stroke-width="1"/>
+                <line x1="220" y1="80" x2="300" y2="50" stroke="rgba(59,130,246,0.4)" stroke-width="1"/>
+                <line x1="300" y1="50" x2="380" y2="90" stroke="rgba(59,130,246,0.4)" stroke-width="1"/>
+                <line x1="100" y1="100" x2="180" y2="70" stroke="rgba(59,130,246,0.3)" stroke-width="1"/>
+                <line x1="180" y1="70" x2="260" y2="110" stroke="rgba(59,130,246,0.3)" stroke-width="1"/>
+                <!-- 节点 -->
+                <circle cx="80" cy="60" r="4" fill="rgba(59,130,246,0.8)"/>
+                <circle cx="150" cy="40" r="3" fill="rgba(59,130,246,0.6)"/>
+                <circle cx="220" cy="80" r="5" fill="rgba(59,130,246,0.8)"/>
+                <circle cx="300" cy="50" r="3" fill="rgba(59,130,246,0.6)"/>
+                <circle cx="180" cy="70" r="4" fill="rgba(59,130,246,0.7)"/>
+            </svg>
+        </div>
+
+        <!-- 表单区域 -->
+        <div class="px-8 pb-8 -mt-8 relative">
+            <!-- Logo和标题 -->
+            <div class="mb-8">
+                <div class="flex items-center gap-2 mb-3">
+                    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-600/30">
+                        <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                            <circle cx="12" cy="12" r="3"/>
+                            <circle cx="12" cy="4" r="2"/>
+                            <circle cx="12" cy="20" r="2"/>
+                            <circle cx="4" cy="12" r="2"/>
+                            <circle cx="20" cy="12" r="2"/>
+                        </svg>
+                    </div>
+                    <span class="text-sm font-medium text-slate-300">中创新航</span>
+                </div>
+                <h1 class="text-2xl font-bold text-white">工厂 IP 地址管理系统</h1>
+            </div>
+
+            <!-- 登录表单 -->
+            <form method="post" action="{% url 'login' %}" class="space-y-5">
+                {% csrf_token %}
+
+                {% if form.errors %}
+                <div class="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-lg">error</span>
+                        <span>用户名或密码错误，请重试</span>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- 用户名 -->
+                <div>
+                    <label for="username" class="block text-sm font-medium text-slate-300 mb-2">用户名</label>
+                    <div class="relative">
+                        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xl">person</span>
+                        <input type="text" id="username" name="username" required
+                               placeholder="请输入员工 ID 或邮箱"
+                               class="w-full pl-11 pr-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                    </div>
+                </div>
+
+                <!-- 密码 -->
+                <div>
+                    <label for="password" class="block text-sm font-medium text-slate-300 mb-2">密码</label>
+                    <div class="relative">
+                        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xl">lock</span>
+                        <input :type="showPassword ? 'text' : 'password'" id="password" name="password" required
+                               placeholder="请输入密码"
+                               class="w-full pl-11 pr-12 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                        <button type="button" @click="showPassword = !showPassword"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                            <span class="material-symbols-outlined text-xl" x-text="showPassword ? 'visibility_off' : 'visibility'">visibility</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 记住我 & 忘记密码 -->
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" name="remember" class="w-4 h-4 bg-slate-900 border-slate-600 rounded text-blue-600 focus:ring-blue-500 focus:ring-offset-0">
+                        <span class="text-sm text-slate-400">记住我</span>
+                    </label>
+                    <a href="#" class="text-sm text-blue-400 hover:text-blue-300 transition-colors">忘记密码？</a>
+                </div>
+
+                <!-- 登录按钮 -->
+                <button type="submit"
+                        class="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 hover:shadow-blue-500/30">
+                    <span class="material-symbols-outlined text-xl">login</span>
+                    登录
+                </button>
+            </form>
+
+            <!-- 提示信息 -->
+            <div class="mt-6 text-center text-xs text-slate-500 space-y-1">
+                <p>仅限授权人员访问。</p>
+                <p>访问受监控并会被记录。</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

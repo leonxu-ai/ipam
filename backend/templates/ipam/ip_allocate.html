@@ -1,0 +1,458 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}分配 IP 地址{% endblock %}
+{% block page_title %}分配 IP 地址{% endblock %}
+{% block page_status %}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6" x-data="ipAllocateWizard()">
+    <!-- 返回按钮 -->
+    <a href="{% url 'ipam:ip_list' %}" class="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
+        <span class="material-symbols-outlined text-xl">arrow_back</span>
+        返回 IP 列表
+    </a>
+
+    <!-- 步骤指示器 -->
+    <div class="bg-slate-800/50 rounded-xl border border-slate-700/50 p-6">
+        <div class="flex items-center justify-between">
+            <!-- 步骤 1 -->
+            <div class="flex items-center gap-3" :class="{ 'opacity-50': step > 1 }">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-colors"
+                     :class="step >= 1 ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'">
+                    <span x-show="step <= 1">1</span>
+                    <span x-show="step > 1" class="material-symbols-outlined text-lg">check</span>
+                </div>
+                <div>
+                    <p class="text-sm font-medium" :class="step >= 1 ? 'text-white' : 'text-slate-400'">选择子网</p>
+                    <p class="text-xs text-slate-500">选择要分配的子网</p>
+                </div>
+            </div>
+
+            <div class="flex-1 h-0.5 mx-4 bg-slate-700">
+                <div class="h-full bg-blue-600 transition-all duration-300"
+                     :style="{ width: step > 1 ? '100%' : '0%' }"></div>
+            </div>
+
+            <!-- 步骤 2 -->
+            <div class="flex items-center gap-3" :class="{ 'opacity-50': step > 2 }">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-colors"
+                     :class="step >= 2 ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'">
+                    <span x-show="step <= 2">2</span>
+                    <span x-show="step > 2" class="material-symbols-outlined text-lg">check</span>
+                </div>
+                <div>
+                    <p class="text-sm font-medium" :class="step >= 2 ? 'text-white' : 'text-slate-400'">选择 IP</p>
+                    <p class="text-xs text-slate-500">从网格中选择 IP</p>
+                </div>
+            </div>
+
+            <div class="flex-1 h-0.5 mx-4 bg-slate-700">
+                <div class="h-full bg-blue-600 transition-all duration-300"
+                     :style="{ width: step > 2 ? '100%' : '0%' }"></div>
+            </div>
+
+            <!-- 步骤 3 -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-colors"
+                     :class="step >= 3 ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'">
+                    <span x-show="step <= 3">3</span>
+                    <span x-show="step > 3" class="material-symbols-outlined text-lg">check</span>
+                </div>
+                <div>
+                    <p class="text-sm font-medium" :class="step >= 3 ? 'text-white' : 'text-slate-400'">填写信息</p>
+                    <p class="text-xs text-slate-500">完善设备信息</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 步骤 1：选择子网 -->
+    <div x-show="step === 1" x-transition class="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-700/50">
+            <h3 class="text-lg font-semibold text-white">选择子网</h3>
+            <p class="text-sm text-slate-400 mt-1">请选择要分配 IP 的子网</p>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {% for subnet in subnets %}
+                <div class="p-4 border-2 rounded-xl cursor-pointer transition-all hover:border-blue-500/50"
+                     :class="selectedSubnet === {{ subnet.id }} ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:bg-slate-700/30'"
+                     @click="selectSubnet({{ subnet.id }}, '{{ subnet.network }}', {{ subnet.available_count }})">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <p class="font-mono font-semibold text-white">{{ subnet.network }}</p>
+                            <p class="text-sm text-slate-400 mt-1">{{ subnet.description|default:"无描述" }}</p>
+                        </div>
+                        <div class="w-6 h-6 rounded-full border-2 flex items-center justify-center"
+                             :class="selectedSubnet === {{ subnet.id }} ? 'border-blue-500 bg-blue-500' : 'border-slate-600'">
+                            <span x-show="selectedSubnet === {{ subnet.id }}" class="material-symbols-outlined text-sm text-white">check</span>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex items-center gap-4 text-sm">
+                        <span class="text-emerald-400">可用: {{ subnet.available_count }}</span>
+                        <span class="text-blue-400">已用: {{ subnet.allocated_count }}</span>
+                        <span class="text-slate-400">{{ subnet.usage_rate|floatformat:0 }}%</span>
+                    </div>
+                    <div class="mt-2 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                        <div class="h-full bg-blue-500 rounded-full" style="width: {{ subnet.usage_rate }}%"></div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="col-span-full text-center py-8 text-slate-500">
+                    <span class="material-symbols-outlined text-4xl mb-2 block">lan</span>
+                    暂无可用子网
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t border-slate-700/50 flex justify-end">
+            <button @click="nextStep()" :disabled="!selectedSubnet"
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors">
+                下一步
+                <span class="material-symbols-outlined text-lg align-middle ml-1">arrow_forward</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 步骤 2：选择 IP -->
+    <div x-show="step === 2" x-transition class="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-white">选择 IP 地址</h3>
+                <p class="text-sm text-slate-400 mt-1">
+                    子网: <span class="font-mono text-blue-400" x-text="selectedSubnetNetwork"></span>
+                    · 可用: <span class="text-emerald-400" x-text="availableCount"></span> 个
+                </p>
+            </div>
+            <div class="flex items-center gap-4 text-sm">
+                <div class="flex items-center gap-2">
+                    <span class="w-4 h-4 rounded bg-emerald-500"></span>
+                    <span class="text-slate-400">可用</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-4 h-4 rounded bg-blue-500"></span>
+                    <span class="text-slate-400">已分配</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-4 h-4 rounded bg-amber-500"></span>
+                    <span class="text-slate-400">保留</span>
+                </div>
+            </div>
+        </div>
+        <div class="p-6">
+            <!-- IP 网格 -->
+            <div class="grid grid-cols-16 gap-1" id="allocation-grid">
+                <template x-for="ip in ipList" :key="ip.id">
+                    <div class="aspect-square rounded cursor-pointer transition-all duration-200 hover:scale-110 hover:z-10 relative group"
+                         :class="{
+                             'bg-emerald-500/80 hover:bg-emerald-400': ip.status === 'available' && selectedIp !== ip.id,
+                             'bg-blue-500/80': ip.status === 'allocated',
+                             'bg-amber-500/80': ip.status === 'reserved',
+                             'bg-red-500 animate-pulse': ip.status === 'conflict',
+                             'ring-2 ring-white ring-offset-2 ring-offset-slate-800 bg-emerald-400': selectedIp === ip.id,
+                             'cursor-not-allowed opacity-50': ip.status !== 'available'
+                         }"
+                         @click="ip.status === 'available' && selectIp(ip)">
+                        <!-- Tooltip -->
+                        <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 rounded-lg text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 border border-slate-700">
+                            <p class="font-mono font-medium text-white" x-text="ip.address"></p>
+                            <p class="text-slate-400" x-text="ip.status === 'available' ? '点击选择' : (ip.hostname || ip.status)"></p>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- 选中的 IP 显示 -->
+            <div x-show="selectedIp" class="mt-6 p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+                <div class="flex items-center gap-4">
+                    <span class="material-symbols-outlined text-2xl text-emerald-400">check_circle</span>
+                    <div>
+                        <p class="text-sm text-slate-400">已选择</p>
+                        <p class="text-xl font-mono font-semibold text-white" x-text="selectedIpAddress"></p>
+                    </div>
+                    <button @click="autoSelectNext()" class="ml-auto px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors">
+                        <span class="material-symbols-outlined text-lg align-middle mr-1">shuffle</span>
+                        自动选择
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="px-6 py-4 border-t border-slate-700/50 flex justify-between">
+            <button @click="prevStep()"
+                    class="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors">
+                <span class="material-symbols-outlined text-lg align-middle mr-1">arrow_back</span>
+                上一步
+            </button>
+            <button @click="nextStep()" :disabled="!selectedIp"
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors">
+                下一步
+                <span class="material-symbols-outlined text-lg align-middle ml-1">arrow_forward</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 步骤 3：填写信息 -->
+    <div x-show="step === 3" x-transition class="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-700/50">
+            <h3 class="text-lg font-semibold text-white">填写设备信息</h3>
+            <p class="text-sm text-slate-400 mt-1">
+                为 <span class="font-mono text-blue-400" x-text="selectedIpAddress"></span> 填写分配信息
+            </p>
+        </div>
+        <form @submit.prevent="submitAllocation()" class="p-6 space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 主机名 -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">
+                        主机名 <span class="text-red-400">*</span>
+                    </label>
+                    <input type="text" x-model="formData.hostname" required
+                           placeholder="例如: server-web-01"
+                           class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+
+                <!-- MAC 地址 -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">
+                        MAC 地址
+                    </label>
+                    <input type="text" x-model="formData.mac_address"
+                           placeholder="例如: AA:BB:CC:DD:EE:FF"
+                           pattern="^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
+                           class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <p class="mt-1 text-xs text-slate-500">格式: AA:BB:CC:DD:EE:FF 或 AA-BB-CC-DD-EE-FF</p>
+                </div>
+
+                <!-- 设备类型 -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">
+                        设备类型 <span class="text-red-400">*</span>
+                    </label>
+                    <select x-model="formData.device_type" required
+                            class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="">请选择...</option>
+                        <option value="server">服务器</option>
+                        <option value="workstation">工作站</option>
+                        <option value="printer">打印机</option>
+                        <option value="network">网络设备</option>
+                        <option value="iot">物联网设备</option>
+                        <option value="other">其他</option>
+                    </select>
+                </div>
+
+                <!-- 分配状态 -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">
+                        分配状态
+                    </label>
+                    <select x-model="formData.status"
+                            class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="allocated">已分配</option>
+                        <option value="reserved">保留</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 备注 -->
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-2">
+                    备注
+                </label>
+                <textarea x-model="formData.notes" rows="3"
+                          placeholder="添加任何相关备注..."
+                          class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"></textarea>
+            </div>
+
+            <!-- 分配摘要 -->
+            <div class="p-4 bg-slate-900/50 rounded-lg border border-slate-700">
+                <h4 class="text-sm font-medium text-slate-400 mb-3">分配摘要</h4>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                        <p class="text-slate-500">IP 地址</p>
+                        <p class="font-mono text-white" x-text="selectedIpAddress"></p>
+                    </div>
+                    <div>
+                        <p class="text-slate-500">子网</p>
+                        <p class="font-mono text-white" x-text="selectedSubnetNetwork"></p>
+                    </div>
+                    <div>
+                        <p class="text-slate-500">主机名</p>
+                        <p class="text-white" x-text="formData.hostname || '-'"></p>
+                    </div>
+                    <div>
+                        <p class="text-slate-500">设备类型</p>
+                        <p class="text-white" x-text="formData.device_type || '-'"></p>
+                    </div>
+                </div>
+            </div>
+        </form>
+        <div class="px-6 py-4 border-t border-slate-700/50 flex justify-between">
+            <button @click="prevStep()"
+                    class="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors">
+                <span class="material-symbols-outlined text-lg align-middle mr-1">arrow_back</span>
+                上一步
+            </button>
+            <button @click="submitAllocation()" :disabled="!formData.hostname || !formData.device_type || isSubmitting"
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors">
+                <span x-show="!isSubmitting" class="material-symbols-outlined text-lg align-middle mr-1">check</span>
+                <span x-show="isSubmitting" class="material-symbols-outlined text-lg align-middle mr-1 animate-spin">refresh</span>
+                <span x-text="isSubmitting ? '分配中...' : '确认分配'"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 成功提示 -->
+    <div x-show="step === 4" x-transition class="bg-slate-800/50 rounded-xl border border-emerald-500/30 overflow-hidden">
+        <div class="p-12 text-center">
+            <div class="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-6">
+                <span class="material-symbols-outlined text-5xl text-emerald-400">check_circle</span>
+            </div>
+            <h3 class="text-2xl font-semibold text-white mb-2">分配成功!</h3>
+            <p class="text-slate-400 mb-8">
+                IP 地址 <span class="font-mono text-blue-400" x-text="selectedIpAddress"></span> 已成功分配
+            </p>
+            <div class="flex justify-center gap-4">
+                <a :href="'/ips/' + selectedIp + '/'"
+                   class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
+                    查看详情
+                </a>
+                <button @click="resetWizard()"
+                        class="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors">
+                    继续分配
+                </button>
+                <a href="{% url 'ipam:ip_list' %}"
+                   class="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors">
+                    返回列表
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function ipAllocateWizard() {
+    return {
+        step: {% if preset_subnet %}2{% else %}1{% endif %},
+        selectedSubnet: {% if preset_subnet %}{{ preset_subnet.id }}{% else %}null{% endif %},
+        selectedSubnetNetwork: '{% if preset_subnet %}{{ preset_subnet.network }}{% else %}{% endif %}',
+        availableCount: {% if preset_subnet %}{{ preset_subnet.available_count }}{% else %}0{% endif %},
+        selectedIp: {% if preset_ip %}{{ preset_ip.id }}{% else %}null{% endif %},
+        selectedIpAddress: '{% if preset_ip %}{{ preset_ip.address }}{% else %}{% endif %}',
+        ipList: [],
+        isSubmitting: false,
+        formData: {
+            hostname: '',
+            mac_address: '',
+            device_type: '',
+            status: 'allocated',
+            notes: ''
+        },
+
+        selectSubnet(id, network, available) {
+            this.selectedSubnet = id;
+            this.selectedSubnetNetwork = network;
+            this.availableCount = available;
+        },
+
+        async loadIpGrid() {
+            try {
+                const response = await fetch(`/api/ip-addresses/?subnet=${this.selectedSubnet}&limit=256`);
+                const data = await response.json();
+                this.ipList = data.results || data;
+            } catch (error) {
+                console.error('加载 IP 列表失败:', error);
+            }
+        },
+
+        selectIp(ip) {
+            this.selectedIp = ip.id;
+            this.selectedIpAddress = ip.address;
+        },
+
+        autoSelectNext() {
+            const available = this.ipList.find(ip => ip.status === 'available');
+            if (available) {
+                this.selectIp(available);
+            }
+        },
+
+        nextStep() {
+            if (this.step === 1 && this.selectedSubnet) {
+                this.step = 2;
+                this.loadIpGrid();
+            } else if (this.step === 2 && this.selectedIp) {
+                this.step = 3;
+            }
+        },
+
+        prevStep() {
+            if (this.step > 1) {
+                this.step--;
+            }
+        },
+
+        async submitAllocation() {
+            if (!this.formData.hostname || !this.formData.device_type) {
+                alert('请填写必填字段');
+                return;
+            }
+
+            this.isSubmitting = true;
+
+            try {
+                const response = await fetch(`/api/ip-addresses/${this.selectedIp}/allocate/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify({
+                        hostname: this.formData.hostname,
+                        mac_address: this.formData.mac_address,
+                        device_type: this.formData.device_type,
+                        status: this.formData.status,
+                        notes: this.formData.notes
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    this.step = 4;
+                } else {
+                    alert('分配失败: ' + (data.message || data.detail || '未知错误'));
+                }
+            } catch (error) {
+                alert('请求失败: ' + error);
+            } finally {
+                this.isSubmitting = false;
+            }
+        },
+
+        resetWizard() {
+            this.step = 1;
+            this.selectedSubnet = null;
+            this.selectedSubnetNetwork = '';
+            this.availableCount = 0;
+            this.selectedIp = null;
+            this.selectedIpAddress = '';
+            this.ipList = [];
+            this.formData = {
+                hostname: '',
+                mac_address: '',
+                device_type: '',
+                status: 'allocated',
+                notes: ''
+            };
+        }
+    }
+}
+</script>
+
+<style>
+.grid-cols-16 {
+    grid-template-columns: repeat(16, minmax(0, 1fr));
+}
+</style>
+{% endblock %}

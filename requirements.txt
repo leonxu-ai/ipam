@@ -18,6 +18,9 @@ pysnmp-lextudio==6.0.4
 # Cryptography
 cryptography==41.0.7
 
+# Production Server
+gunicorn==21.2.0
+
 # Development
 ipython==8.18.1
 

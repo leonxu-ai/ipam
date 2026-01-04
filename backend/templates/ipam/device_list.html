@@ -1,0 +1,492 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}网络设备管理{% endblock %}
+{% block page_title %}网络设备管理{% endblock %}
+{% block page_status %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- 工具栏 -->
+    <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <div class="relative">
+                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xl">search</span>
+                <input type="text" id="device-search" placeholder="搜索设备..."
+                       class="w-64 pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       onkeyup="filterDevices(this.value)">
+            </div>
+            <select id="status-filter"
+                    class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onchange="filterByStatus(this.value)">
+                <option value="">所有状态</option>
+                <option value="active">运行中</option>
+                <option value="inactive">已停用</option>
+            </select>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="scanAllDevices()"
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors">
+                <span class="material-symbols-outlined text-xl">radar</span>
+                扫描全部
+            </button>
+            <button onclick="showAddDeviceModal()"
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
+                <span class="material-symbols-outlined text-xl">add</span>
+                添加设备
+            </button>
+        </div>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-lg bg-slate-700/50 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-2xl text-slate-400">router</span>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-400">设备总数</p>
+                    <p class="text-2xl font-bold text-white">{{ stats.total }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-2xl text-emerald-400">check_circle</span>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-400">运行中</p>
+                    <p class="text-2xl font-bold text-emerald-400">{{ stats.active }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-2xl text-amber-400">pause_circle</span>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-400">已停用</p>
+                    <p class="text-2xl font-bold text-amber-400">{{ stats.inactive }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                    <span class="material-symbols-outlined text-2xl text-blue-400">schedule</span>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-400">上次扫描</p>
+                    <p class="text-lg font-medium text-white">{{ last_scan|date:"H:i"|default:"从未" }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 设备列表 -->
+    <div class="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-slate-900/50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">设备名称</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">IP 地址</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">类型</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">SNMP 版本</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">状态</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">上次扫描</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">发现 IP</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase">操作</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50" id="device-list">
+                    {% for device in devices %}
+                    <tr class="hover:bg-slate-700/20 transition-colors device-row"
+                        data-name="{{ device.name }}"
+                        data-ip="{{ device.ip_address }}"
+                        data-status="{{ device.is_active|yesno:'active,inactive' }}">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-lg bg-slate-700/50 flex items-center justify-center">
+                                    <span class="material-symbols-outlined text-xl text-slate-400">
+                                        {% if device.device_type == 'switch' %}lan
+                                        {% elif device.device_type == 'router' %}router
+                                        {% elif device.device_type == 'firewall' %}security
+                                        {% else %}router{% endif %}
+                                    </span>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-white">{{ device.name }}</p>
+                                    <p class="text-xs text-slate-500">{{ device.description|default:"无描述"|truncatechars:30 }}</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 text-sm font-mono text-white whitespace-nowrap">
+                            {{ device.ip_address }}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-slate-400 whitespace-nowrap">
+                            {% if device.device_type == 'switch' %}交换机
+                            {% elif device.device_type == 'router' %}路由器
+                            {% elif device.device_type == 'firewall' %}防火墙
+                            {% else %}{{ device.device_type }}{% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-slate-400 whitespace-nowrap">
+                            {{ device.snmp_version|upper }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if device.is_active %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5"></span>
+                                运行中
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-500/10 text-slate-400">
+                                <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
+                                已停用
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-slate-400 whitespace-nowrap">
+                            {{ device.last_scan|date:"Y-m-d H:i"|default:"从未" }}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-white whitespace-nowrap">
+                            {{ device.discovered_ips|default:0 }}
+                        </td>
+                        <td class="px-6 py-4 text-right whitespace-nowrap">
+                            <div class="flex items-center justify-end gap-2">
+                                <button onclick="scanDevice({{ device.id }})"
+                                        class="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded transition-colors"
+                                        title="立即扫描">
+                                    <span class="material-symbols-outlined text-lg">radar</span>
+                                </button>
+                                <button onclick="editDevice({{ device.id }})"
+                                        class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                                        title="编辑">
+                                    <span class="material-symbols-outlined text-lg">edit</span>
+                                </button>
+                                {% if device.is_active %}
+                                <button onclick="toggleDevice({{ device.id }}, false)"
+                                        class="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-700 rounded transition-colors"
+                                        title="停用">
+                                    <span class="material-symbols-outlined text-lg">pause_circle</span>
+                                </button>
+                                {% else %}
+                                <button onclick="toggleDevice({{ device.id }}, true)"
+                                        class="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-700 rounded transition-colors"
+                                        title="启用">
+                                    <span class="material-symbols-outlined text-lg">play_circle</span>
+                                </button>
+                                {% endif %}
+                                <button onclick="deleteDevice({{ device.id }})"
+                                        class="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded transition-colors"
+                                        title="删除">
+                                    <span class="material-symbols-outlined text-lg">delete</span>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="px-6 py-12 text-center text-sm text-slate-500">
+                            <span class="material-symbols-outlined text-4xl mb-2 block">router</span>
+                            暂无网络设备，请点击"添加设备"按钮
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 添加/编辑设备弹窗 -->
+<div id="device-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden z-50 flex items-center justify-center">
+    <div class="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-lg mx-4 shadow-2xl">
+        <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white" id="modal-title">添加设备</h3>
+            <button onclick="closeModal()" class="p-1 text-slate-400 hover:text-white rounded transition-colors">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <form id="device-form" onsubmit="submitDevice(event)" class="p-6 space-y-4">
+            <input type="hidden" id="device-id" value="">
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">设备名称 *</label>
+                    <input type="text" id="device-name" required
+                           class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">IP 地址 *</label>
+                    <input type="text" id="device-ip" required pattern="^(\d{1,3}\.){3}\d{1,3}$"
+                           class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white font-mono placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">设备类型 *</label>
+                    <select id="device-type" required
+                            class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="switch">交换机</option>
+                        <option value="router">路由器</option>
+                        <option value="firewall">防火墙</option>
+                        <option value="other">其他</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">SNMP 版本 *</label>
+                    <select id="snmp-version" required onchange="toggleSnmpFields()"
+                            class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="v2c">SNMP v2c</option>
+                        <option value="v3">SNMP v3</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- SNMP v2c 字段 -->
+            <div id="snmp-v2c-fields">
+                <label class="block text-sm font-medium text-slate-300 mb-2">Community 字符串 *</label>
+                <input type="password" id="snmp-community"
+                       class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                       placeholder="例如: public">
+            </div>
+
+            <!-- SNMP v3 字段 -->
+            <div id="snmp-v3-fields" class="hidden space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">用户名 *</label>
+                    <input type="text" id="snmp-username"
+                           class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">认证协议</label>
+                        <select id="snmp-auth-protocol"
+                                class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="MD5">MD5</option>
+                            <option value="SHA">SHA</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">认证密码</label>
+                        <input type="password" id="snmp-auth-password"
+                               class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">加密协议</label>
+                        <select id="snmp-priv-protocol"
+                                class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="DES">DES</option>
+                            <option value="AES">AES</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-300 mb-2">加密密码</label>
+                        <input type="password" id="snmp-priv-password"
+                               class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-300 mb-2">描述</label>
+                <textarea id="device-description" rows="2"
+                          class="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
+            </div>
+        </form>
+        <div class="px-6 py-4 border-t border-slate-700 flex justify-end gap-3">
+            <button onclick="closeModal()"
+                    class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors">
+                取消
+            </button>
+            <button onclick="document.getElementById('device-form').requestSubmit()"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
+                保存
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function filterDevices(query) {
+    const rows = document.querySelectorAll('.device-row');
+    const lowerQuery = query.toLowerCase();
+
+    rows.forEach(row => {
+        const name = row.dataset.name.toLowerCase();
+        const ip = row.dataset.ip.toLowerCase();
+        row.style.display = (name.includes(lowerQuery) || ip.includes(lowerQuery)) ? '' : 'none';
+    });
+}
+
+function filterByStatus(status) {
+    const rows = document.querySelectorAll('.device-row');
+
+    rows.forEach(row => {
+        if (!status || row.dataset.status === status) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
+function showAddDeviceModal() {
+    document.getElementById('modal-title').textContent = '添加设备';
+    document.getElementById('device-id').value = '';
+    document.getElementById('device-form').reset();
+    toggleSnmpFields();
+    document.getElementById('device-modal').classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('device-modal').classList.add('hidden');
+}
+
+function toggleSnmpFields() {
+    const version = document.getElementById('snmp-version').value;
+    document.getElementById('snmp-v2c-fields').classList.toggle('hidden', version !== 'v2c');
+    document.getElementById('snmp-v3-fields').classList.toggle('hidden', version !== 'v3');
+}
+
+function editDevice(id) {
+    // 加载设备数据并打开编辑弹窗
+    fetch(`/api/network-devices/${id}/`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('modal-title').textContent = '编辑设备';
+            document.getElementById('device-id').value = id;
+            document.getElementById('device-name').value = data.name;
+            document.getElementById('device-ip').value = data.ip_address;
+            document.getElementById('device-type').value = data.device_type;
+            document.getElementById('snmp-version').value = data.snmp_version;
+            document.getElementById('device-description').value = data.description || '';
+            toggleSnmpFields();
+            document.getElementById('device-modal').classList.remove('hidden');
+        });
+}
+
+function submitDevice(event) {
+    event.preventDefault();
+
+    const id = document.getElementById('device-id').value;
+    const isEdit = !!id;
+
+    const data = {
+        name: document.getElementById('device-name').value,
+        ip_address: document.getElementById('device-ip').value,
+        device_type: document.getElementById('device-type').value,
+        snmp_version: document.getElementById('snmp-version').value,
+        description: document.getElementById('device-description').value
+    };
+
+    if (data.snmp_version === 'v2c') {
+        data.snmp_community = document.getElementById('snmp-community').value;
+    } else {
+        data.snmp_username = document.getElementById('snmp-username').value;
+        data.snmp_auth_protocol = document.getElementById('snmp-auth-protocol').value;
+        data.snmp_auth_password = document.getElementById('snmp-auth-password').value;
+        data.snmp_priv_protocol = document.getElementById('snmp-priv-protocol').value;
+        data.snmp_priv_password = document.getElementById('snmp-priv-password').value;
+    }
+
+    const url = isEdit ? `/api/network-devices/${id}/` : '/api/network-devices/';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => {
+        if (response.ok) {
+            location.reload();
+        } else {
+            return response.json().then(err => { throw err; });
+        }
+    })
+    .catch(error => {
+        alert('保存失败: ' + JSON.stringify(error));
+    });
+}
+
+function toggleDevice(id, activate) {
+    const action = activate ? 'enable' : 'disable';
+    fetch(`/api/network-devices/${id}/${action}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            location.reload();
+        }
+    });
+}
+
+function deleteDevice(id) {
+    if (confirm('确定要删除这个设备吗？')) {
+        fetch(`/api/network-devices/${id}/`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            }
+        });
+    }
+}
+
+function scanDevice(id) {
+    alert('正在扫描设备...');
+    fetch(`/api/network-devices/${id}/scan/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert('扫描完成：发现 ' + (data.discovered || 0) + ' 个 IP');
+        location.reload();
+    })
+    .catch(error => {
+        alert('扫描失败: ' + error);
+    });
+}
+
+function scanAllDevices() {
+    if (confirm('确定要扫描所有设备吗？这可能需要一些时间。')) {
+        alert('正在扫描所有设备...');
+        fetch('/api/agent/scan_all/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert('扫描完成');
+            location.reload();
+        })
+        .catch(error => {
+            alert('扫描失败: ' + error);
+        });
+    }
+}
+</script>
+{% endblock %}

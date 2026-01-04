@@ -1,0 +1,177 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}IP地址管理{% endblock %}
+{% block page_title %}IP 地址管理{% endblock %}
+{% block page_status %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- 工具栏 -->
+    <div class="flex flex-wrap items-center justify-between gap-4">
+        <!-- 搜索和过滤 -->
+        <div class="flex items-center gap-3 flex-wrap">
+            <form method="get" class="flex items-center gap-3 flex-wrap">
+                <!-- 搜索框 -->
+                <div class="relative">
+                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xl">search</span>
+                    <input type="text" name="q" value="{{ search }}" placeholder="搜索 IP、主机名、MAC..."
+                           class="w-64 pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+
+                <!-- 状态过滤 -->
+                <select name="status"
+                        class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onchange="this.form.submit()">
+                    <option value="">所有状态</option>
+                    <option value="available" {% if status_filter == 'available' %}selected{% endif %}>可用</option>
+                    <option value="allocated" {% if status_filter == 'allocated' %}selected{% endif %}>已分配</option>
+                    <option value="reserved" {% if status_filter == 'reserved' %}selected{% endif %}>保留</option>
+                    <option value="conflict" {% if status_filter == 'conflict' %}selected{% endif %}>冲突</option>
+                </select>
+
+                <!-- 子网过滤 -->
+                <select name="subnet"
+                        class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onchange="this.form.submit()">
+                    <option value="">所有子网</option>
+                    {% for subnet in subnets %}
+                    <option value="{{ subnet.id }}" {% if subnet_filter == subnet.id|stringformat:'s' %}selected{% endif %}>
+                        {{ subnet.network }}
+                    </option>
+                    {% endfor %}
+                </select>
+
+                <button type="submit" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors">
+                    筛选
+                </button>
+            </form>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="flex items-center gap-3">
+            <a href="{% url 'ipam:ip_allocate' %}"
+               class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
+                <span class="material-symbols-outlined text-xl">add</span>
+                分配 IP
+            </a>
+        </div>
+    </div>
+
+    <!-- IP列表表格 -->
+    <div class="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-slate-900/50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">IP 地址</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">状态</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">主机名</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">MAC 地址</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">设备类型</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">子网</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">分配时间</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-slate-400 uppercase">操作</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50">
+                    {% for ip in ips %}
+                    <tr class="hover:bg-slate-700/20 transition-colors">
+                        <td class="px-6 py-4 text-sm font-mono text-white whitespace-nowrap">
+                            <a href="{% url 'ipam:ip_detail' ip.id %}" class="hover:text-blue-400 transition-colors">
+                                {{ ip.address }}
+                            </a>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if ip.status == 'available' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400">
+                                可用
+                            </span>
+                            {% elif ip.status == 'allocated' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400">
+                                已分配
+                            </span>
+                            {% elif ip.status == 'reserved' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400">
+                                保留
+                            </span>
+                            {% elif ip.status == 'conflict' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 animate-pulse">
+                                冲突
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-slate-300 whitespace-nowrap">
+                            {{ ip.hostname|default:"-" }}
+                        </td>
+                        <td class="px-6 py-4 text-sm font-mono text-slate-400 whitespace-nowrap">
+                            {{ ip.mac_address|default:"-" }}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-slate-400 whitespace-nowrap">
+                            {{ ip.device_type|default:"-" }}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-slate-400 whitespace-nowrap">
+                            <a href="{% url 'ipam:subnet_detail' ip.subnet.id %}" class="hover:text-blue-400 transition-colors">
+                                {{ ip.subnet.network }}
+                            </a>
+                        </td>
+                        <td class="px-6 py-4 text-sm text-slate-500 whitespace-nowrap">
+                            {{ ip.allocated_at|date:"Y-m-d H:i"|default:"-" }}
+                        </td>
+                        <td class="px-6 py-4 text-right whitespace-nowrap">
+                            <div class="flex items-center justify-end gap-2">
+                                <a href="{% url 'ipam:ip_detail' ip.id %}"
+                                   class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                                   title="查看详情">
+                                    <span class="material-symbols-outlined text-lg">visibility</span>
+                                </a>
+                                {% if ip.status == 'available' %}
+                                <a href="{% url 'ipam:ip_allocate' %}?ip={{ ip.id }}"
+                                   class="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-700 rounded transition-colors"
+                                   title="分配">
+                                    <span class="material-symbols-outlined text-lg">person_add</span>
+                                </a>
+                                {% elif ip.status == 'allocated' %}
+                                <button class="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-700 rounded transition-colors"
+                                        title="释放" onclick="releaseIP({{ ip.id }})">
+                                    <span class="material-symbols-outlined text-lg">person_remove</span>
+                                </button>
+                                {% elif ip.status == 'conflict' %}
+                                <button class="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded transition-colors"
+                                        title="解决冲突" onclick="resolveConflict({{ ip.id }})">
+                                    <span class="material-symbols-outlined text-lg">build</span>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="px-6 py-12 text-center text-sm text-slate-500">
+                            <span class="material-symbols-outlined text-4xl mb-2 block">inbox</span>
+                            没有找到匹配的 IP 地址
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function releaseIP(ipId) {
+    if (confirm('确定要释放这个 IP 地址吗？')) {
+        // TODO: 调用API释放IP
+        alert('功能开发中');
+    }
+}
+
+function resolveConflict(ipId) {
+    if (confirm('选择解决方案：\n1. 保留当前配置\n2. 更新MAC地址\n3. 释放IP')) {
+        // TODO: 调用API解决冲突
+        alert('功能开发中');
+    }
+}
+</script>
+{% endblock %}

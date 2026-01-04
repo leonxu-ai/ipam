@@ -1,0 +1,25 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}登录{% endblock %} - 中创新航工厂IP地址管理系统</title>
+    <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+    <script defer src="{% static 'js/alpine.min.js' %}"></script>
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col items-center justify-center p-4">
+    {% block content %}{% endblock %}
+
+    <!-- 页脚 -->
+    <footer class="mt-8 text-center text-sm text-slate-500">
+        <a href="#" class="hover:text-slate-400 transition-colors">隐私政策</a>
+        <span class="mx-2">•</span>
+        <a href="#" class="hover:text-slate-400 transition-colors">帮助中心</a>
+    </footer>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

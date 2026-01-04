@@ -1,0 +1,331 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ ip.address }} - IP详情{% endblock %}
+{% block page_title %}{{ ip.address }}{% endblock %}
+{% block page_status %}
+{% if ip.status == 'available' %}
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400">
+    可用
+</span>
+{% elif ip.status == 'allocated' %}
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400">
+    已分配
+</span>
+{% elif ip.status == 'reserved' %}
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400">
+    保留
+</span>
+{% elif ip.status == 'conflict' %}
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 animate-pulse">
+    冲突
+</span>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- 返回按钮和操作 -->
+    <div class="flex items-center justify-between">
+        <a href="{% url 'ipam:ip_list' %}" class="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
+            <span class="material-symbols-outlined text-xl">arrow_back</span>
+            返回 IP 列表
+        </a>
+        <div class="flex items-center gap-3">
+            {% if ip.status == 'available' %}
+            <a href="{% url 'ipam:ip_allocate' %}?ip={{ ip.id }}"
+               class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
+                <span class="material-symbols-outlined text-xl">person_add</span>
+                分配此 IP
+            </a>
+            {% elif ip.status == 'allocated' %}
+            <button onclick="releaseIP({{ ip.id }})"
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition-colors">
+                <span class="material-symbols-outlined text-xl">person_remove</span>
+                释放 IP
+            </button>
+            {% elif ip.status == 'conflict' %}
+            <button onclick="showResolveOptions()"
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition-colors">
+                <span class="material-symbols-outlined text-xl">build</span>
+                解决冲突
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- 左侧：IP 信息 -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- 基本信息 -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-700/50">
+                    <h3 class="text-lg font-semibold text-white">基本信息</h3>
+                </div>
+                <div class="p-6">
+                    <dl class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <dt class="text-sm text-slate-400 mb-1">IP 地址</dt>
+                            <dd class="text-lg font-mono font-semibold text-white">{{ ip.address }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm text-slate-400 mb-1">所属子网</dt>
+                            <dd>
+                                <a href="{% url 'ipam:subnet_detail' ip.subnet.id %}" class="text-lg text-blue-400 hover:text-blue-300 transition-colors">
+                                    {{ ip.subnet.network }}
+                                </a>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm text-slate-400 mb-1">主机名</dt>
+                            <dd class="text-lg text-white">{{ ip.hostname|default:"未设置" }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm text-slate-400 mb-1">MAC 地址</dt>
+                            <dd class="text-lg font-mono text-white">{{ ip.mac_address|default:"未设置" }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm text-slate-400 mb-1">设备类型</dt>
+                            <dd class="text-lg text-white">{{ ip.device_type|default:"未设置" }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm text-slate-400 mb-1">分配者</dt>
+                            <dd class="text-lg text-white">{{ ip.allocated_by.username|default:"系统" }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm text-slate-400 mb-1">分配时间</dt>
+                            <dd class="text-lg text-white">{{ ip.allocated_at|date:"Y-m-d H:i:s"|default:"N/A" }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm text-slate-400 mb-1">最后扫描</dt>
+                            <dd class="text-lg text-white">{{ ip.last_seen|date:"Y-m-d H:i:s"|default:"从未" }}</dd>
+                        </div>
+                    </dl>
+                </div>
+            </div>
+
+            <!-- 备注信息 -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-white">备注</h3>
+                    <button onclick="editNote()" class="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors">
+                        <span class="material-symbols-outlined text-lg">edit</span>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <p class="text-slate-300" id="ip-note">{{ ip.notes|default:"暂无备注" }}</p>
+                </div>
+            </div>
+
+            {% if ip.status == 'conflict' %}
+            <!-- 冲突信息 -->
+            <div class="bg-red-500/10 rounded-xl border border-red-500/30 overflow-hidden">
+                <div class="px-6 py-4 border-b border-red-500/30 flex items-center gap-3">
+                    <span class="material-symbols-outlined text-2xl text-red-400 animate-pulse">warning</span>
+                    <h3 class="text-lg font-semibold text-red-400">检测到 IP 冲突</h3>
+                </div>
+                <div class="p-6">
+                    <div class="space-y-4">
+                        <div class="flex items-start gap-4">
+                            <div class="flex-1 bg-slate-800/50 rounded-lg p-4">
+                                <p class="text-sm text-slate-400 mb-2">当前记录</p>
+                                <p class="font-mono text-white">MAC: {{ ip.mac_address }}</p>
+                                <p class="text-slate-400 text-sm">主机名: {{ ip.hostname|default:"未知" }}</p>
+                            </div>
+                            <div class="flex items-center text-slate-500">
+                                <span class="material-symbols-outlined text-3xl">compare_arrows</span>
+                            </div>
+                            <div class="flex-1 bg-slate-800/50 rounded-lg p-4">
+                                <p class="text-sm text-slate-400 mb-2">扫描发现</p>
+                                <p class="font-mono text-white">MAC: {{ ip.conflict_mac|default:"未知" }}</p>
+                                <p class="text-slate-400 text-sm">发现时间: {{ ip.conflict_detected_at|date:"Y-m-d H:i"|default:"未知" }}</p>
+                            </div>
+                        </div>
+                        <div class="flex justify-center gap-4 pt-4">
+                            <button onclick="resolveConflict('keep')"
+                                    class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors">
+                                保留当前记录
+                            </button>
+                            <button onclick="resolveConflict('update')"
+                                    class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-colors">
+                                更新为新设备
+                            </button>
+                            <button onclick="resolveConflict('release')"
+                                    class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm transition-colors">
+                                释放 IP
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 右侧：操作日志 -->
+        <div class="space-y-6">
+            <!-- 快速信息 -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700/50 p-5">
+                <div class="flex items-center gap-4 mb-4">
+                    <div class="w-16 h-16 rounded-xl flex items-center justify-center
+                                {% if ip.status == 'available' %}bg-emerald-500/10
+                                {% elif ip.status == 'allocated' %}bg-blue-500/10
+                                {% elif ip.status == 'reserved' %}bg-amber-500/10
+                                {% elif ip.status == 'conflict' %}bg-red-500/10
+                                {% endif %}">
+                        <span class="material-symbols-outlined text-3xl
+                                    {% if ip.status == 'available' %}text-emerald-400
+                                    {% elif ip.status == 'allocated' %}text-blue-400
+                                    {% elif ip.status == 'reserved' %}text-amber-400
+                                    {% elif ip.status == 'conflict' %}text-red-400
+                                    {% endif %}">
+                            {% if ip.status == 'available' %}check_circle
+                            {% elif ip.status == 'allocated' %}person
+                            {% elif ip.status == 'reserved' %}lock
+                            {% elif ip.status == 'conflict' %}warning
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div>
+                        <p class="text-2xl font-mono font-bold text-white">{{ ip.address }}</p>
+                        <p class="text-sm text-slate-400">{{ ip.subnet.network }}</p>
+                    </div>
+                </div>
+                <div class="pt-4 border-t border-slate-700/50 space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-400">创建时间</span>
+                        <span class="text-white">{{ ip.created_at|date:"Y-m-d" }}</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-slate-400">更新时间</span>
+                        <span class="text-white">{{ ip.updated_at|date:"Y-m-d H:i" }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作历史 -->
+            <div class="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-white">操作历史</h3>
+                    <a href="{% url 'ipam:audit_log_list' %}?ip={{ ip.address }}" class="text-sm text-blue-400 hover:text-blue-300">
+                        查看全部
+                    </a>
+                </div>
+                <div class="divide-y divide-slate-700/50">
+                    {% for log in audit_logs %}
+                    <div class="px-6 py-4">
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-full bg-slate-700/50 flex items-center justify-center flex-shrink-0">
+                                <span class="material-symbols-outlined text-lg
+                                            {% if log.action == 'allocate' %}text-emerald-400
+                                            {% elif log.action == 'release' %}text-amber-400
+                                            {% elif log.action == 'conflict_detected' %}text-red-400
+                                            {% else %}text-slate-400{% endif %}">
+                                    {% if log.action == 'allocate' %}person_add
+                                    {% elif log.action == 'release' %}person_remove
+                                    {% elif log.action == 'conflict_detected' %}warning
+                                    {% elif log.action == 'update' %}edit
+                                    {% else %}info
+                                    {% endif %}
+                                </span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm text-white">{{ log.get_action_display }}</p>
+                                <p class="text-xs text-slate-500">
+                                    {{ log.user.username|default:"系统" }} · {{ log.timestamp|date:"Y-m-d H:i" }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="px-6 py-8 text-center text-sm text-slate-500">
+                        暂无操作记录
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function releaseIP(ipId) {
+    if (confirm('确定要释放这个 IP 地址吗？')) {
+        fetch(`/api/ip-addresses/${ipId}/release/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('释放失败: ' + (data.message || '未知错误'));
+            }
+        })
+        .catch(error => {
+            alert('请求失败: ' + error);
+        });
+    }
+}
+
+function resolveConflict(action) {
+    const messages = {
+        'keep': '保留当前记录并清除冲突标记？',
+        'update': '更新为扫描发现的新设备信息？',
+        'release': '释放此 IP 地址？'
+    };
+
+    if (confirm(messages[action])) {
+        fetch(`/api/ip-addresses/{{ ip.id }}/resolve_conflict/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({ action: action })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('解决冲突失败: ' + (data.message || '未知错误'));
+            }
+        })
+        .catch(error => {
+            alert('请求失败: ' + error);
+        });
+    }
+}
+
+function editNote() {
+    const currentNote = document.getElementById('ip-note').textContent;
+    const newNote = prompt('编辑备注:', currentNote === '暂无备注' ? '' : currentNote);
+
+    if (newNote !== null) {
+        fetch(`/api/ip-addresses/{{ ip.id }}/`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({ notes: newNote })
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('ip-note').textContent = newNote || '暂无备注';
+        })
+        .catch(error => {
+            alert('保存失败: ' + error);
+        });
+    }
+}
+
+function showResolveOptions() {
+    document.querySelector('.bg-red-500\\/10').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+{% endblock %}

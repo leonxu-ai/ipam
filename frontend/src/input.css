@@ -1,0 +1,321 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 自定义基础样式 */
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-secondary-50 text-secondary-900 font-sans;
+  }
+
+  /* 滚动条样式 */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-secondary-100 rounded;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-secondary-300 rounded hover:bg-secondary-400;
+  }
+}
+
+/* 自定义组件 */
+@layer components {
+  /* 按钮 */
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+  }
+
+  .btn-secondary {
+    @apply btn bg-secondary-100 text-secondary-700 hover:bg-secondary-200 focus:ring-secondary-500;
+  }
+
+  .btn-success {
+    @apply btn bg-success-600 text-white hover:bg-success-700 focus:ring-success-500;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger-600 text-white hover:bg-danger-700 focus:ring-danger-500;
+  }
+
+  .btn-outline {
+    @apply btn border border-secondary-300 bg-white text-secondary-700 hover:bg-secondary-50 focus:ring-primary-500;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-base;
+  }
+
+  /* 卡片 */
+  .card {
+    @apply bg-white rounded-xl shadow-card p-6;
+  }
+
+  .card-hover {
+    @apply card transition-shadow duration-200 hover:shadow-card-hover;
+  }
+
+  /* 表单控件 */
+  .form-input {
+    @apply w-full px-3 py-2 text-sm border border-secondary-300 rounded-lg bg-white placeholder-secondary-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200;
+  }
+
+  .form-select {
+    @apply form-input appearance-none bg-no-repeat bg-right pr-10;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-size: 1.5em 1.5em;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-secondary-700 mb-1;
+  }
+
+  .form-error {
+    @apply text-sm text-danger-600 mt-1;
+  }
+
+  /* 表格 */
+  .table-container {
+    @apply overflow-x-auto rounded-lg border border-secondary-200;
+  }
+
+  .table {
+    @apply w-full text-sm text-left;
+  }
+
+  .table thead {
+    @apply bg-secondary-50 text-secondary-600 uppercase text-xs;
+  }
+
+  .table th {
+    @apply px-4 py-3 font-medium;
+  }
+
+  .table td {
+    @apply px-4 py-3 border-t border-secondary-100;
+  }
+
+  .table tbody tr:hover {
+    @apply bg-secondary-50;
+  }
+
+  /* 徽章/状态标签 */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-available {
+    @apply badge bg-success-100 text-success-800;
+  }
+
+  .badge-allocated {
+    @apply badge bg-primary-100 text-primary-800;
+  }
+
+  .badge-reserved {
+    @apply badge bg-warning-100 text-warning-800;
+  }
+
+  .badge-conflict {
+    @apply badge bg-danger-100 text-danger-800;
+  }
+
+  /* 侧边栏 */
+  .sidebar {
+    @apply fixed left-0 top-0 h-full w-64 bg-secondary-900 text-white flex flex-col;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 text-secondary-300 hover:bg-secondary-800 hover:text-white transition-colors duration-200;
+  }
+
+  .sidebar-link.active {
+    @apply bg-primary-600 text-white;
+  }
+
+  /* 主内容区 */
+  .main-content {
+    @apply ml-64 min-h-screen p-6;
+  }
+
+  /* 统计卡片 */
+  .stat-card {
+    @apply card flex items-center gap-4;
+  }
+
+  .stat-icon {
+    @apply w-12 h-12 rounded-lg flex items-center justify-center text-2xl;
+  }
+
+  .stat-value {
+    @apply text-2xl font-bold text-secondary-900;
+  }
+
+  .stat-label {
+    @apply text-sm text-secondary-500;
+  }
+
+  /* IP网格 */
+  .ip-grid {
+    @apply grid grid-cols-16 gap-0.5;
+  }
+
+  .ip-cell {
+    @apply w-6 h-6 rounded text-xs flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-110;
+  }
+
+  .ip-cell-available {
+    @apply ip-cell bg-success-200 text-success-800 hover:bg-success-300;
+  }
+
+  .ip-cell-allocated {
+    @apply ip-cell bg-primary-200 text-primary-800 hover:bg-primary-300;
+  }
+
+  .ip-cell-reserved {
+    @apply ip-cell bg-warning-200 text-warning-800 hover:bg-warning-300;
+  }
+
+  .ip-cell-conflict {
+    @apply ip-cell bg-danger-200 text-danger-800 hover:bg-danger-300 animate-pulse-slow;
+  }
+
+  /* 模态框 */
+  .modal-backdrop {
+    @apply fixed inset-0 bg-black/50 flex items-center justify-center z-50;
+  }
+
+  .modal {
+    @apply bg-white rounded-xl shadow-modal w-full max-w-lg max-h-[90vh] overflow-auto animate-fade-in;
+  }
+
+  .modal-header {
+    @apply flex items-center justify-between px-6 py-4 border-b border-secondary-200;
+  }
+
+  .modal-body {
+    @apply px-6 py-4;
+  }
+
+  .modal-footer {
+    @apply flex items-center justify-end gap-3 px-6 py-4 border-t border-secondary-200;
+  }
+
+  /* 加载动画 */
+  .loading-spinner {
+    @apply animate-spin h-5 w-5 border-2 border-primary-500 border-t-transparent rounded-full;
+  }
+
+  /* 向导步骤 */
+  .wizard-steps {
+    @apply flex items-center justify-between mb-8;
+  }
+
+  .wizard-step {
+    @apply flex items-center;
+  }
+
+  .wizard-step-number {
+    @apply w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium;
+  }
+
+  .wizard-step-active .wizard-step-number {
+    @apply bg-primary-600 text-white;
+  }
+
+  .wizard-step-completed .wizard-step-number {
+    @apply bg-success-600 text-white;
+  }
+
+  .wizard-step-pending .wizard-step-number {
+    @apply bg-secondary-200 text-secondary-500;
+  }
+
+  .wizard-step-line {
+    @apply flex-1 h-0.5 mx-4 bg-secondary-200;
+  }
+
+  .wizard-step-line-active {
+    @apply wizard-step-line bg-primary-600;
+  }
+
+  /* 页面标题 */
+  .page-header {
+    @apply flex items-center justify-between mb-6;
+  }
+
+  .page-title {
+    @apply text-2xl font-bold text-secondary-900;
+  }
+
+  /* 搜索框 */
+  .search-input {
+    @apply form-input pl-10;
+  }
+
+  .search-icon {
+    @apply absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400;
+  }
+
+  /* 分页 */
+  .pagination {
+    @apply flex items-center gap-1;
+  }
+
+  .pagination-btn {
+    @apply w-8 h-8 flex items-center justify-center rounded text-sm text-secondary-600 hover:bg-secondary-100;
+  }
+
+  .pagination-btn.active {
+    @apply bg-primary-600 text-white hover:bg-primary-700;
+  }
+
+  /* 通知/提示 */
+  .alert {
+    @apply p-4 rounded-lg flex items-start gap-3;
+  }
+
+  .alert-info {
+    @apply alert bg-primary-50 text-primary-800;
+  }
+
+  .alert-success {
+    @apply alert bg-success-50 text-success-800;
+  }
+
+  .alert-warning {
+    @apply alert bg-warning-50 text-warning-800;
+  }
+
+  .alert-danger {
+    @apply alert bg-danger-50 text-danger-800;
+  }
+}
+
+/* 工具类扩展 */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* 16列网格（用于IP地址） */
+  .grid-cols-16 {
+    grid-template-columns: repeat(16, minmax(0, 1fr));
+  }
+}
