@@ -84,20 +84,31 @@ WSGI_APPLICATION = 'ipam_project.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
+# 支持 SQLite（本地开发）和 PostgreSQL（生产环境）
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB', 'ipam_db'),
-        'USER': os.getenv('POSTGRES_USER', 'ipam_user'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'ipam_password'),
-        'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
-        'PORT': os.getenv('POSTGRES_PORT', '5432'),
-        'OPTIONS': {
-            'connect_timeout': 10,
-        },
+USE_SQLITE = os.getenv('USE_SQLITE', 'False') == 'True'
+
+if USE_SQLITE:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('POSTGRES_DB', 'ipam_db'),
+            'USER': os.getenv('POSTGRES_USER', 'ipam_user'),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'ipam_password'),
+            'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
+            'PORT': os.getenv('POSTGRES_PORT', '5432'),
+            'OPTIONS': {
+                'connect_timeout': 10,
+            },
+        }
+    }
 
 
 # Password validation
