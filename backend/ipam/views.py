@@ -499,3 +499,112 @@ class DashboardViewSet(viewsets.ViewSet):
         ranking.sort(key=lambda x: x["usage_rate"], reverse=True)
 
         return Response(ranking, status=status.HTTP_200_OK)
+
+
+class AgentViewSet(viewsets.ViewSet):
+    """Agent系统提示API"""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="获取Agent系统上下文",
+        description="获取当前IPAM系统状态的完整上下文，供AI Agent使用",
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "context": {"type": "string"},
+                },
+            }
+        },
+        tags=["Agent"],
+    )
+    @action(detail=False, methods=["get"])
+    def system_context(self, request: Request) -> Response:
+        """获取完整的系统上下文"""
+        from .agent_prompts import AgentPromptGenerator
+
+        context = AgentPromptGenerator.generate_system_context()
+        return Response({"context": context}, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="获取子网分配上下文",
+        description="获取针对特定子网的分配上下文",
+        parameters=[
+            OpenApiParameter(
+                name="subnet_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="子网ID",
+            )
+        ],
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "context": {"type": "string"},
+                },
+            }
+        },
+        tags=["Agent"],
+    )
+    @action(detail=False, methods=["get"])
+    def allocation_context(self, request: Request) -> Response:
+        """获取子网分配上下文"""
+        from .agent_prompts import AgentPromptGenerator
+
+        subnet_id = request.query_params.get("subnet_id")
+        if not subnet_id:
+            return Response(
+                {"error": "subnet_id参数必填"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            context = AgentPromptGenerator.generate_allocation_context(int(subnet_id))
+            return Response({"context": context}, status=status.HTTP_200_OK)
+        except ValueError:
+            return Response(
+                {"error": "subnet_id必须为整数"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @extend_schema(
+        summary="获取冲突解决上下文",
+        description="获取针对特定冲突IP的解决上下文",
+        parameters=[
+            OpenApiParameter(
+                name="ip_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="IP地址记录ID",
+            )
+        ],
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "context": {"type": "string"},
+                },
+            }
+        },
+        tags=["Agent"],
+    )
+    @action(detail=False, methods=["get"])
+    def conflict_context(self, request: Request) -> Response:
+        """获取冲突解决上下文"""
+        from .agent_prompts import AgentPromptGenerator
+
+        ip_id = request.query_params.get("ip_id")
+        if not ip_id:
+            return Response(
+                {"error": "ip_id参数必填"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            context = AgentPromptGenerator.generate_conflict_resolution_context(int(ip_id))
+            return Response({"context": context}, status=status.HTTP_200_OK)
+        except ValueError:
+            return Response(
+                {"error": "ip_id必须为整数"}, status=status.HTTP_400_BAD_REQUEST
+            )

@@ -10,6 +10,7 @@ from .views import (
     NetworkDeviceViewSet,
     AuditLogViewSet,
     DashboardViewSet,
+    AgentViewSet,
 )
 
 # DRF路由器
@@ -19,6 +20,7 @@ router.register(r"ip-addresses", IpAddressViewSet, basename="ipaddress")
 router.register(r"network-devices", NetworkDeviceViewSet, basename="networkdevice")
 router.register(r"audit-logs", AuditLogViewSet, basename="auditlog")
 router.register(r"dashboard", DashboardViewSet, basename="dashboard")
+router.register(r"agent", AgentViewSet, basename="agent")
 
 app_name = "ipam"
 
