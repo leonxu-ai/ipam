@@ -53,6 +53,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -146,10 +147,20 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR.parent / 'staticfiles'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [
     BASE_DIR / 'static',
 ]
+
+# WhiteNoise 静态文件压缩
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+    },
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+}
 
 # Media files
 MEDIA_URL = '/media/'
@@ -176,6 +187,8 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    # 自定义异常处理器，确保所有 API 错误返回 JSON 格式
+    'EXCEPTION_HANDLER': 'ipam_project.exception_handlers.custom_api_exception_handler',
 }
 
 # drf-spectacular settings
@@ -209,7 +222,11 @@ Q_CLUSTER = {
 # CSRF trusted origins (for Docker deployment)
 CSRF_TRUSTED_ORIGINS = [
     'http://10.21.111.129',
+    'http://10.21.111.129:8000',
     'http://localhost',
+    'http://localhost:8000',
+    'http://127.0.0.1',
+    'http://127.0.0.1:8000',
 ]
 
 # Security settings
@@ -219,5 +236,11 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # Session settings
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
+# 注意：如果使用 HTTP（非 HTTPS），需要设为 False
+SESSION_COOKIE_SECURE = os.getenv('USE_HTTPS', 'False') == 'True'
+CSRF_COOKIE_SECURE = os.getenv('USE_HTTPS', 'False') == 'True'
+
+# 登录重定向
+LOGIN_REDIRECT_URL = '/'
+LOGIN_URL = '/login/'
+LOGOUT_REDIRECT_URL = '/login/'

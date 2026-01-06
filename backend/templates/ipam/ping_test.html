@@ -1,0 +1,399 @@
+{% extends 'base.html' %}
+
+{% block title %}Ping 测试 - IPAM{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto" x-data="pingTestApp()">
+    <!-- 页面标题 -->
+    <div class="mb-8">
+        <h1 class="text-2xl font-bold text-slate-900 dark:text-white">Ping 连通性测试</h1>
+        <p class="text-slate-600 dark:text-slate-400 mt-1">通过核心交换机测试IP地址的网络连通性</p>
+    </div>
+
+    <!-- 快速测试输入框 -->
+    <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-white mb-4">快速测试</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- IP地址输入 -->
+            <div class="md:col-span-2 relative">
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">目标IP地址</label>
+                <div class="relative">
+                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">lan</span>
+                    <input type="text"
+                           x-model="quickIp"
+                           @keydown.enter="startQuickPing()"
+                           placeholder="输入IP地址，如：172.20.36.1"
+                           class="w-full pl-10 pr-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600
+                                  bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+                                  placeholder-slate-400 dark:placeholder-slate-500
+                                  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+            </div>
+
+            <!-- 交换机选择 -->
+            <div>
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">选择交换机</label>
+                <select x-model="selectedSwitch"
+                        class="w-full py-3 px-4 rounded-lg border border-slate-300 dark:border-slate-600
+                               bg-white dark:bg-slate-700 text-slate-900 dark:text-white
+                               focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <template x-for="sw in switches" :key="sw.index">
+                        <option :value="sw.index" x-text="sw.name"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <button @click="startQuickPing()"
+                    :disabled="testing || !quickIp"
+                    class="w-full md:w-auto px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700
+                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors
+                           flex items-center justify-center gap-2">
+                <span x-show="!testing" class="material-symbols-outlined">network_ping</span>
+                <svg x-show="testing" class="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                <span x-text="testing ? '正在通过交换机测试...' : '开始测试'"></span>
+            </button>
+        </div>
+
+        <!-- 交换机说明 -->
+        <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div class="flex items-start gap-2">
+                <span class="material-symbols-outlined text-blue-500 text-lg mt-0.5">info</span>
+                <div class="text-sm text-blue-700 dark:text-blue-300">
+                    <p class="font-medium">通过核心交换机执行Ping测试</p>
+                    <p class="mt-1 text-blue-600 dark:text-blue-400">
+                        系统会SSH连接到选择的核心交换机，由交换机执行ping命令，确保能正确测试各VLAN网络的连通性。
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 我的IP地址列表 -->
+    {% if my_ips %}
+    <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-white mb-4">我的 IP 地址</h2>
+
+        <div class="space-y-3">
+            {% for ip in my_ips %}
+            <div class="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg
+                        hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30
+                                flex items-center justify-center text-blue-600 dark:text-blue-400">
+                        <span class="material-symbols-outlined">dns</span>
+                    </div>
+                    <div>
+                        <div class="font-mono text-lg text-slate-900 dark:text-white">{{ ip.address }}</div>
+                        <div class="text-sm text-slate-500 dark:text-slate-400">
+                            {% if ip.hostname %}{{ ip.hostname }} - {% endif %}{{ ip.get_status_display }}
+                        </div>
+                    </div>
+                </div>
+                <button @click="startPing('{{ ip.address }}', {{ ip.id }})"
+                        :disabled="testing"
+                        class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600
+                               disabled:opacity-50 transition-colors flex items-center gap-2">
+                    <span x-show="!testing || currentIp !== '{{ ip.address }}'" class="material-symbols-outlined text-sm">network_ping</span>
+                    <span x-show="testing && currentIp === '{{ ip.address }}'" class="flex items-center gap-2">
+                        <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                    </span>
+                    <span x-text="testing && currentIp === '{{ ip.address }}' ? '测试中' : '测试'"></span>
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 测试结果 -->
+    <div x-show="result" x-cloak x-transition
+         class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-white mb-4">测试结果</h2>
+
+        <!-- 成功可达 -->
+        <template x-if="result && result.success && result.reachable">
+            <div class="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                <div class="flex items-start gap-3">
+                    <span class="material-symbols-outlined text-3xl text-emerald-500">check_circle</span>
+                    <div class="flex-1">
+                        <div class="font-semibold text-emerald-700 dark:text-emerald-400 text-lg">
+                            <span x-text="currentIp"></span> 可达
+                        </div>
+                        <div class="text-sm text-emerald-600 dark:text-emerald-500 mt-1">
+                            <span x-text="result.message"></span>
+                        </div>
+                        <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div class="bg-white/50 dark:bg-slate-800/50 rounded-lg p-3">
+                                <div class="text-emerald-600 dark:text-emerald-400">响应时间</div>
+                                <div class="font-mono font-bold text-emerald-700 dark:text-emerald-300" x-text="result.response_time_ms ? result.response_time_ms + ' ms' : '-'"></div>
+                            </div>
+                            <div class="bg-white/50 dark:bg-slate-800/50 rounded-lg p-3">
+                                <div class="text-emerald-600 dark:text-emerald-400">丢包率</div>
+                                <div class="font-mono font-bold text-emerald-700 dark:text-emerald-300" x-text="result.packet_loss + '%'"></div>
+                            </div>
+                            <div class="bg-white/50 dark:bg-slate-800/50 rounded-lg p-3">
+                                <div class="text-emerald-600 dark:text-emerald-400">收/发包数</div>
+                                <div class="font-mono font-bold text-emerald-700 dark:text-emerald-300" x-text="result.packet_received + '/' + result.packet_sent"></div>
+                            </div>
+                            <div class="bg-white/50 dark:bg-slate-800/50 rounded-lg p-3">
+                                <div class="text-emerald-600 dark:text-emerald-400">测试交换机</div>
+                                <div class="font-bold text-emerald-700 dark:text-emerald-300 text-xs" x-text="result.switch_name"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- 成功但不可达 -->
+        <template x-if="result && result.success && !result.reachable">
+            <div class="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                <div class="flex items-start gap-3">
+                    <span class="material-symbols-outlined text-3xl text-red-500">cancel</span>
+                    <div class="flex-1">
+                        <div class="font-semibold text-red-700 dark:text-red-400 text-lg">
+                            <span x-text="currentIp"></span> 不可达
+                        </div>
+                        <div class="text-sm text-red-600 dark:text-red-500 mt-1" x-text="result.message"></div>
+                        <div class="mt-3 grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                            <div class="bg-white/50 dark:bg-slate-800/50 rounded-lg p-3">
+                                <div class="text-red-600 dark:text-red-400">丢包率</div>
+                                <div class="font-mono font-bold text-red-700 dark:text-red-300" x-text="result.packet_loss + '%'"></div>
+                            </div>
+                            <div class="bg-white/50 dark:bg-slate-800/50 rounded-lg p-3">
+                                <div class="text-red-600 dark:text-red-400">收/发包数</div>
+                                <div class="font-mono font-bold text-red-700 dark:text-red-300" x-text="result.packet_received + '/' + result.packet_sent"></div>
+                            </div>
+                            <div class="bg-white/50 dark:bg-slate-800/50 rounded-lg p-3">
+                                <div class="text-red-600 dark:text-red-400">测试交换机</div>
+                                <div class="font-bold text-red-700 dark:text-red-300 text-xs" x-text="result.switch_name"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- 执行失败 -->
+        <template x-if="result && !result.success">
+            <div class="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                <div class="flex items-start gap-3">
+                    <span class="material-symbols-outlined text-3xl text-amber-500">warning</span>
+                    <div>
+                        <div class="font-semibold text-amber-700 dark:text-amber-400">测试失败</div>
+                        <div class="text-sm text-amber-600 dark:text-amber-500 mt-1" x-text="result.message"></div>
+                        <div x-show="result.switch_name" class="text-sm text-amber-600 dark:text-amber-500 mt-1">
+                            交换机: <span x-text="result.switch_name"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- 各交换机详细结果（全选时显示） -->
+        <div x-show="result && result.all_results && result.all_results.length > 0" class="mt-4">
+            <h3 class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">各交换机测试详情</h3>
+            <div class="space-y-2">
+                <template x-for="(sr, idx) in result.all_results" :key="idx">
+                    <div class="flex items-center justify-between p-3 rounded-lg"
+                         :class="sr.reachable ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20'">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-lg"
+                                  :class="sr.reachable ? 'text-emerald-500' : 'text-red-500'"
+                                  x-text="sr.reachable ? 'check_circle' : 'cancel'"></span>
+                            <span class="font-medium" :class="sr.reachable ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'"
+                                  x-text="sr.switch_name"></span>
+                        </div>
+                        <div class="text-right">
+                            <span x-show="sr.reachable && sr.avg_time"
+                                  class="text-emerald-600 dark:text-emerald-400 font-mono"
+                                  x-text="sr.avg_time + ' ms'"></span>
+                            <span x-show="!sr.reachable"
+                                  class="text-red-600 dark:text-red-400 text-sm"
+                                  x-text="sr.message || '不可达'"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- 原始输出 -->
+        <div x-show="result && result.raw_output" class="mt-4">
+            <button @click="showRawOutput = !showRawOutput"
+                    class="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm" x-text="showRawOutput ? 'expand_less' : 'expand_more'"></span>
+                <span x-text="showRawOutput ? '隐藏原始输出' : '查看原始输出'"></span>
+            </button>
+            <div x-show="showRawOutput" x-collapse class="mt-2">
+                <pre class="p-4 bg-slate-900 text-slate-100 rounded-lg text-sm overflow-x-auto font-mono" x-text="result.raw_output"></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- 历史记录 -->
+    <div x-show="history.length > 0" x-cloak
+         class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-white mb-4">测试历史</h2>
+        <div class="space-y-2">
+            <template x-for="(item, index) in history.slice(0, 10)" :key="index">
+                <div class="flex items-center justify-between py-3 px-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                    <div class="flex items-center gap-3">
+                        <span class="material-symbols-outlined text-lg"
+                              :class="item.reachable ? 'text-emerald-500' : 'text-red-500'"
+                              x-text="item.reachable ? 'check_circle' : 'cancel'"></span>
+                        <div>
+                            <span class="font-mono text-slate-900 dark:text-white" x-text="item.ip"></span>
+                            <span class="text-sm text-slate-500 dark:text-slate-400 ml-2" x-text="'via ' + item.switch_name"></span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-slate-900 dark:text-white">
+                            <span x-show="item.response_time_ms" x-text="item.response_time_ms + ' ms'"></span>
+                            <span x-show="!item.reachable" class="text-red-500">不可达</span>
+                        </div>
+                        <div class="text-xs text-slate-500 dark:text-slate-400" x-text="formatTime(item.timestamp)"></div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- 空状态提示 -->
+    {% if not my_ips %}
+    <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-8 text-center">
+        <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 dark:bg-slate-700
+                    flex items-center justify-center text-slate-400 dark:text-slate-500">
+            <span class="material-symbols-outlined text-3xl">info</span>
+        </div>
+        <h3 class="text-lg font-medium text-slate-900 dark:text-white mb-2">您还没有分配的IP地址</h3>
+        <p class="text-slate-500 dark:text-slate-400 mb-4">您可以在上方输入框中输入任意IP地址进行测试</p>
+        <a href="{% url 'ipam:ip_allocate' %}"
+           class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            <span class="material-symbols-outlined">add_circle</span>
+            申请 IP 地址
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function pingTestApp() {
+    return {
+        testing: false,
+        currentIp: '',
+        quickIp: '',
+        selectedSwitch: -1,
+        result: null,
+        history: [],
+        showRawOutput: false,
+        switches: [
+            { index: -1, name: '全部交换机', ip: '同时测试' },
+            { index: 0, name: 'J14-MES-CORE', ip: '10.69.253.1' },
+            { index: 1, name: 'R1-MES-CORE', ip: '10.75.255.230' }
+        ],
+
+        formatTime(date) {
+            if (!date) return '';
+            const d = new Date(date);
+            return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        },
+
+        async startQuickPing() {
+            if (!this.quickIp) return;
+
+            // 简单IP格式验证
+            const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+            if (!ipRegex.test(this.quickIp)) {
+                window.modal.toast('请输入有效的IP地址格式', 'warning');
+                return;
+            }
+
+            await this.executePing(this.quickIp);
+        },
+
+        async startPing(ip, ipId) {
+            await this.executePing(ip, ipId);
+        },
+
+        async executePing(ip, ipId = null) {
+            this.testing = true;
+            this.currentIp = ip;
+            this.result = null;
+            this.showRawOutput = false;
+
+            try {
+                let data;
+                if (ipId) {
+                    // 使用API的ping_test action
+                    data = await window.apiFetch(`/api/ip-addresses/${ipId}/ping_test/`, {
+                        method: 'POST',
+                        body: JSON.stringify({ switch_index: this.selectedSwitch })
+                    });
+                } else {
+                    // 直接调用quick_ping端点
+                    data = await window.apiFetch('/api/ip-addresses/quick_ping/', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            target_ip: ip,
+                            switch_index: this.selectedSwitch
+                        })
+                    });
+                }
+
+                this.result = data;
+
+                // 交换机列表由后端返回（已包含"全部交换机"选项）
+                if (data.available_switches && data.available_switches.length > 0) {
+                    this.switches = data.available_switches;
+                    // 确保当前选中的值仍然有效
+                    if (!this.switches.find(s => s.index === this.selectedSwitch)) {
+                        this.selectedSwitch = -1;
+                    }
+                }
+
+                // 添加到历史记录
+                this.history.unshift({
+                    ip: ip,
+                    reachable: data.reachable,
+                    response_time_ms: data.response_time_ms,
+                    switch_name: data.switch_name || this.switches[this.selectedSwitch]?.name || '',
+                    timestamp: new Date()
+                });
+
+                // 只保留最近10条
+                if (this.history.length > 10) {
+                    this.history = this.history.slice(0, 10);
+                }
+
+                // 显示toast
+                if (data.reachable) {
+                    window.modal.toast(`${ip} 可达 (${data.switch_name})`, 'success');
+                } else if (data.success) {
+                    window.modal.toast(`${ip} 不可达 (${data.switch_name})`, 'error');
+                } else {
+                    window.modal.toast(data.message || '测试失败', 'warning');
+                }
+            } catch (error) {
+                this.result = {
+                    success: false,
+                    reachable: false,
+                    message: error.message || '请求失败，请检查网络连接或交换机状态'
+                };
+                window.modal.toast('测试请求失败: ' + error.message, 'error');
+            } finally {
+                this.testing = false;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

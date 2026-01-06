@@ -4,7 +4,7 @@
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url('/static/fonts/inter-regular.woff2') format('woff2');
+  src: url('../fonts/inter-regular.woff2') format('woff2');
 }
 
 @font-face {
@@ -12,7 +12,7 @@
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url('/static/fonts/inter-medium.woff2') format('woff2');
+  src: url('../fonts/inter-medium.woff2') format('woff2');
 }
 
 @font-face {
@@ -20,7 +20,7 @@
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url('/static/fonts/inter-semibold.woff2') format('woff2');
+  src: url('../fonts/inter-semibold.woff2') format('woff2');
 }
 
 @font-face {
@@ -28,7 +28,7 @@
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url('/static/fonts/inter-bold.woff2') format('woff2');
+  src: url('../fonts/inter-bold.woff2') format('woff2');
 }
 
 /* Material Symbols Outlined - Offline Version */
@@ -36,8 +36,8 @@
   font-family: 'Material Symbols Outlined';
   font-style: normal;
   font-weight: 100 700;
-  font-display: block;
-  src: url('/static/fonts/material-symbols-outlined.woff2') format('woff2');
+  font-display: swap;
+  src: url('../fonts/material-symbols-outlined.woff2') format('woff2');
 }
 
 .material-symbols-outlined {

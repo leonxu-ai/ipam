@@ -14,12 +14,17 @@ redis==5.0.1
 
 # SNMP
 pysnmp-lextudio==6.0.4
+pyasn1==0.6.0  # 锁定版本，0.6.1 删除了 compat.octets 模块
+
+# Network Device SSH (for ping via switch)
+netmiko==4.3.0
 
 # Cryptography
 cryptography==41.0.7
 
 # Production Server
 gunicorn==21.2.0
+whitenoise==6.6.0
 
 # Development
 ipython==8.18.1

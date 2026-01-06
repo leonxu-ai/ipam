@@ -71,6 +71,123 @@ def scan_single_device(device_id: int) -> Dict[str, Any]:
         return {"error": str(e), "device_id": device_id}
 
 
+def scan_all_with_progress(task_id: str, force: bool = True) -> Dict[str, Any]:
+    """
+    带进度报告的批量扫描任务
+
+    Args:
+        task_id: 任务 ID，用于存储进度到缓存
+        force: 强制扫描所有设备（默认 True，UI 触发时应强制扫描）
+
+    Returns:
+        扫描结果统计
+    """
+    from django.core.cache import cache
+    from .snmp_scanner import SNMPScanner, SNMPScanManager
+    from .models import NetworkDevice
+    import time
+
+    # 根据 force 参数决定扫描哪些设备
+    if force:
+        devices = list(NetworkDevice.objects.filter(enabled=True))
+    else:
+        devices = SNMPScanManager.get_devices_due_for_scan()
+
+    total = len(devices)
+
+    results = {
+        "total_devices": total,
+        "successful": 0,
+        "failed": 0,
+        "total_scanned": 0,
+        "total_updated": 0,
+        "total_conflicts": 0,
+        "errors": [],
+        "logs": [],
+    }
+
+    start_time = time.time()
+
+    logger.info(f"开始批量扫描任务 {task_id}，共 {total} 台设备")
+
+    for idx, device in enumerate(devices, 1):
+        # 更新进度
+        progress_data = {
+            "task_id": task_id,
+            "status": "running",
+            "progress": int((idx - 1) / total * 100) if total > 0 else 0,
+            "current": idx,
+            "total": total,
+            "current_device": device.name,
+            "message": f"正在扫描 {device.name} ({idx}/{total})...",
+            "logs": results["logs"][-20:],  # 最近20条日志
+            "partial_results": {
+                "successful": results["successful"],
+                "failed": results["failed"],
+                "total_scanned": results["total_scanned"],
+            },
+        }
+        cache.set(f'scan_progress_{task_id}', progress_data, timeout=3600)
+
+        try:
+            scanner = SNMPScanner(device)
+            scanned, updated, conflicts = scanner.scan_and_update()
+
+            results["successful"] += 1
+            results["total_scanned"] += scanned
+            results["total_updated"] += updated
+            results["total_conflicts"] += conflicts
+
+            log_entry = {
+                "time": time.strftime("%H:%M:%S"),
+                "level": "success",
+                "device": device.name,
+                "message": f"发现 {scanned} 条 ARP，更新 {updated} 个 IP",
+            }
+            results["logs"].append(log_entry)
+
+            logger.info(f"设备 {device.name} 扫描成功: {scanned} ARP, {updated} 更新")
+
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append({
+                "device": device.name,
+                "ip": device.ip_address,
+                "error": str(e),
+            })
+
+            log_entry = {
+                "time": time.strftime("%H:%M:%S"),
+                "level": "error",
+                "device": device.name,
+                "message": str(e)[:100],
+            }
+            results["logs"].append(log_entry)
+
+            logger.warning(f"设备 {device.name} 扫描失败: {e}")
+
+    results["elapsed_seconds"] = round(time.time() - start_time, 2)
+
+    # 最终进度
+    cache.set(f'scan_progress_{task_id}', {
+        "task_id": task_id,
+        "status": "completed",
+        "progress": 100,
+        "message": "扫描完成",
+        "logs": results["logs"][-20:],
+        "result": results,
+    }, timeout=3600)
+
+    logger.info(
+        f"批量扫描任务 {task_id} 完成: "
+        f"成功 {results['successful']}/{total}，"
+        f"扫描 {results['total_scanned']} 条，"
+        f"耗时 {results['elapsed_seconds']} 秒"
+    )
+
+    return results
+
+
 def cleanup_old_audit_logs(days: int = 365) -> Dict[str, Any]:
     """
     清理旧审计日志的定时任务

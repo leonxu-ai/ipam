@@ -1,9 +1,21 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     "../backend/templates/**/*.html",
     "../backend/ipam/templates/**/*.html",
     "./src/**/*.js",
+  ],
+  safelist: [
+    // IP状态颜色 - 确保这些类始终被生成
+    'bg-emerald-500', 'dark:bg-emerald-500', 'hover:bg-emerald-400', 'dark:hover:bg-emerald-400',
+    'bg-purple-500', 'dark:bg-purple-500', 'hover:bg-purple-400', 'dark:hover:bg-purple-400',
+    'bg-blue-500', 'dark:bg-blue-500', 'hover:bg-blue-400', 'dark:hover:bg-blue-400',
+    'bg-amber-500', 'dark:bg-amber-500', 'hover:bg-amber-400', 'dark:hover:bg-amber-400',
+    'bg-red-500', 'dark:bg-red-500', 'hover:bg-red-400', 'dark:hover:bg-red-400',
+    'bg-slate-200', 'dark:bg-slate-700',
+    'text-white', 'text-slate-500', 'dark:text-slate-400',
+    'animate-pulse',
   ],
   theme: {
     extend: {

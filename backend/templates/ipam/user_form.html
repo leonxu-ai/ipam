@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{% if is_edit %}编辑用户{% else %}添加用户{% endif %}{% endblock %}
+{% block page_title %}{% if is_edit %}编辑用户{% else %}添加用户{% endif %}{% endblock %}
+{% block page_status %}{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto" x-data="{ showPassword: false, showPassword2: false }">
+    <div class="bg-white border border-slate-200 dark:bg-slate-800/50 dark:border-slate-700/50 rounded-xl overflow-hidden transition-colors">
+        <!-- 表单头部 -->
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700/50">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-100 dark:bg-blue-600/20 rounded-lg flex items-center justify-center">
+                    <span class="material-symbols-outlined text-blue-600 dark:text-blue-400">person</span>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-900 dark:text-white">
+                        {% if is_edit %}编辑用户 {{ user.username }}{% else %}添加新用户{% endif %}
+                    </h2>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">请填写用户信息</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 表单内容 -->
+        <form method="post" class="p-6 space-y-6">
+            {% csrf_token %}
+
+            <!-- 用户名 -->
+            <div>
+                <label for="username" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    用户名 <span class="text-red-500 dark:text-red-400">*</span>
+                </label>
+                {% if is_edit %}
+                <input type="text" value="{{ user.username }}" disabled
+                       class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-500 dark:text-slate-400 cursor-not-allowed">
+                <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">用户名创建后不可修改</p>
+                {% else %}
+                <input type="text" id="username" name="username" required
+                       value="{{ form_data.username|default:'' }}"
+                       placeholder="请输入用户名"
+                       class="w-full px-4 py-3 rounded-lg text-sm transition-colors
+                              bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400
+                              dark:bg-slate-900/50 dark:border-slate-700 dark:text-white dark:placeholder-slate-500
+                              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                {% endif %}
+            </div>
+
+            <!-- 邮箱 -->
+            <div>
+                <label for="email" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    邮箱
+                </label>
+                <input type="email" id="email" name="email"
+                       value="{% if is_edit %}{{ user.email|default:'' }}{% else %}{{ form_data.email|default:'' }}{% endif %}"
+                       placeholder="user@example.com"
+                       class="w-full px-4 py-3 rounded-lg text-sm transition-colors
+                              bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400
+                              dark:bg-slate-900/50 dark:border-slate-700 dark:text-white dark:placeholder-slate-500
+                              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            </div>
+
+            <!-- 姓名 -->
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="last_name" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        姓氏
+                    </label>
+                    <input type="text" id="last_name" name="last_name"
+                           value="{% if is_edit %}{{ user.last_name|default:'' }}{% else %}{{ form_data.last_name|default:'' }}{% endif %}"
+                           placeholder="例如: 张"
+                           class="w-full px-4 py-3 rounded-lg text-sm transition-colors
+                                  bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400
+                                  dark:bg-slate-900/50 dark:border-slate-700 dark:text-white dark:placeholder-slate-500
+                                  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+                <div>
+                    <label for="first_name" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        名字
+                    </label>
+                    <input type="text" id="first_name" name="first_name"
+                           value="{% if is_edit %}{{ user.first_name|default:'' }}{% else %}{{ form_data.first_name|default:'' }}{% endif %}"
+                           placeholder="例如: 三"
+                           class="w-full px-4 py-3 rounded-lg text-sm transition-colors
+                                  bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400
+                                  dark:bg-slate-900/50 dark:border-slate-700 dark:text-white dark:placeholder-slate-500
+                                  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                </div>
+            </div>
+
+            <!-- 密码 -->
+            <div>
+                <label for="password" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    密码 {% if not is_edit %}<span class="text-red-500 dark:text-red-400">*</span>{% endif %}
+                </label>
+                <div class="relative">
+                    <input :type="showPassword ? 'text' : 'password'" id="password" name="password"
+                           {% if not is_edit %}required{% endif %}
+                           placeholder="{% if is_edit %}留空表示不修改密码{% else %}请输入密码（至少8位）{% endif %}"
+                           class="w-full px-4 py-3 pr-12 rounded-lg text-sm transition-colors
+                                  bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400
+                                  dark:bg-slate-900/50 dark:border-slate-700 dark:text-white dark:placeholder-slate-500
+                                  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <button type="button" @click="showPassword = !showPassword"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors">
+                        <span class="material-symbols-outlined text-xl" x-text="showPassword ? 'visibility_off' : 'visibility'">visibility</span>
+                    </button>
+                </div>
+                <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">密码长度至少8位</p>
+            </div>
+
+            <!-- 确认密码 -->
+            <div>
+                <label for="password2" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    确认密码 {% if not is_edit %}<span class="text-red-500 dark:text-red-400">*</span>{% endif %}
+                </label>
+                <div class="relative">
+                    <input :type="showPassword2 ? 'text' : 'password'" id="password2" name="password2"
+                           {% if not is_edit %}required{% endif %}
+                           placeholder="请再次输入密码"
+                           class="w-full px-4 py-3 pr-12 rounded-lg text-sm transition-colors
+                                  bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400
+                                  dark:bg-slate-900/50 dark:border-slate-700 dark:text-white dark:placeholder-slate-500
+                                  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <button type="button" @click="showPassword2 = !showPassword2"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors">
+                        <span class="material-symbols-outlined text-xl" x-text="showPassword2 ? 'visibility_off' : 'visibility'">visibility</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 权限设置 -->
+            <div class="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/30 rounded-lg border border-slate-200 dark:border-slate-700/50 transition-colors">
+                <h3 class="text-sm font-medium text-slate-700 dark:text-slate-300">权限设置</h3>
+
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" name="is_active" {% if is_edit %}{% if user.is_active %}checked{% endif %}{% else %}checked{% endif %}
+                           class="w-4 h-4 bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-600 rounded text-blue-600 focus:ring-blue-500 focus:ring-offset-0">
+                    <div>
+                        <span class="text-sm text-slate-900 dark:text-white">激活账户</span>
+                        <p class="text-xs text-slate-500">用户可以登录系统</p>
+                    </div>
+                </label>
+
+                <!-- 角色选择（互斥） -->
+                <div class="pt-3 border-t border-slate-200 dark:border-slate-700/30">
+                    <p class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">用户角色 <span class="text-red-500 dark:text-red-400">*</span></p>
+
+                    <div class="space-y-3">
+                        <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border transition-colors
+                                      {% if is_edit %}{% if not user.is_staff and not user.is_superuser %}bg-blue-50 border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/30{% else %}bg-white border-slate-200 dark:bg-slate-800/50 dark:border-slate-700{% endif %}{% else %}bg-blue-50 border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/30{% endif %}"
+                               onclick="updateRoleSelection(this)">
+                            <input type="radio" name="role" value="user"
+                                   {% if is_edit %}{% if not user.is_staff and not user.is_superuser %}checked{% endif %}{% else %}checked{% endif %}
+                                   class="w-4 h-4 bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0">
+                            <div class="flex-1">
+                                <span class="text-sm font-medium text-slate-900 dark:text-white">普通用户</span>
+                                <p class="text-xs text-slate-500">只能查看和申请 IP 地址</p>
+                            </div>
+                            <span class="material-symbols-outlined text-slate-400 dark:text-slate-500">person</span>
+                        </label>
+
+                        <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border transition-colors
+                                      {% if is_edit and user.is_staff and not user.is_superuser %}bg-blue-50 border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/30{% else %}bg-white border-slate-200 dark:bg-slate-800/50 dark:border-slate-700{% endif %}"
+                               onclick="updateRoleSelection(this)">
+                            <input type="radio" name="role" value="admin"
+                                   {% if is_edit and user.is_staff and not user.is_superuser %}checked{% endif %}
+                                   class="w-4 h-4 bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0">
+                            <div class="flex-1">
+                                <span class="text-sm font-medium text-slate-900 dark:text-white">管理员</span>
+                                <p class="text-xs text-slate-500">可以管理 IP、子网和查看审计日志</p>
+                            </div>
+                            <span class="material-symbols-outlined text-amber-500 dark:text-amber-400">admin_panel_settings</span>
+                        </label>
+
+                        <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border transition-colors
+                                      {% if is_edit and user.is_superuser %}bg-blue-50 border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/30{% else %}bg-white border-slate-200 dark:bg-slate-800/50 dark:border-slate-700{% endif %}"
+                               onclick="updateRoleSelection(this)">
+                            <input type="radio" name="role" value="superadmin"
+                                   {% if is_edit and user.is_superuser %}checked{% endif %}
+                                   class="w-4 h-4 bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0">
+                            <div class="flex-1">
+                                <span class="text-sm font-medium text-slate-900 dark:text-white">超级管理员</span>
+                                <p class="text-xs text-slate-500">拥有系统所有权限，包括用户管理</p>
+                            </div>
+                            <span class="material-symbols-outlined text-red-500 dark:text-red-400">shield_person</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+            function updateRoleSelection(label) {
+                // 移除所有选中样式
+                document.querySelectorAll('input[name="role"]').forEach(radio => {
+                    const parentLabel = radio.closest('label');
+                    parentLabel.classList.remove('bg-blue-50', 'border-blue-200', 'dark:bg-blue-500/10', 'dark:border-blue-500/30');
+                    parentLabel.classList.add('bg-white', 'border-slate-200', 'dark:bg-slate-800/50', 'dark:border-slate-700');
+                });
+
+                // 添加当前选中样式
+                label.classList.remove('bg-white', 'border-slate-200', 'dark:bg-slate-800/50', 'dark:border-slate-700');
+                label.classList.add('bg-blue-50', 'border-blue-200', 'dark:bg-blue-500/10', 'dark:border-blue-500/30');
+            }
+            </script>
+
+            <!-- 按钮 -->
+            <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700/50">
+                <a href="{% url 'ipam:user_list' %}"
+                   class="px-5 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-lg transition-colors">
+                    取消
+                </a>
+                <button type="submit"
+                        class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors">
+                    <span class="material-symbols-outlined text-lg">save</span>
+                    {% if is_edit %}保存修改{% else %}创建用户{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

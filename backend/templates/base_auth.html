@@ -1,6 +1,6 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" x-data="themeManager()" :class="{ 'dark': isDark }">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,17 +8,145 @@
     <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
     <script defer src="{% static 'js/alpine.min.js' %}"></script>
+    <style>
+        /* 主题过渡动画 */
+        html.theme-transition,
+        html.theme-transition *,
+        html.theme-transition *::before,
+        html.theme-transition *::after {
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease !important;
+        }
+    </style>
     {% block extra_css %}{% endblock %}
 </head>
-<body class="bg-slate-900 text-slate-100 font-sans antialiased min-h-screen flex flex-col items-center justify-center p-4">
-    {% block content %}{% endblock %}
+<body class="font-sans antialiased min-h-screen flex flex-col items-center justify-center p-4 transition-colors duration-300
+             bg-slate-100 text-slate-900
+             dark:bg-slate-900 dark:text-slate-100">
 
-    <!-- 页脚 -->
-    <footer class="mt-8 text-center text-sm text-slate-500">
-        <a href="#" class="hover:text-slate-400 transition-colors">隐私政策</a>
-        <span class="mx-2">•</span>
-        <a href="#" class="hover:text-slate-400 transition-colors">帮助中心</a>
-    </footer>
+    <script>
+        // 在页面加载前立即设置主题，防止闪烁
+        (function() {
+            const saved = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const isDark = saved === 'dark' || (saved !== 'light' && prefersDark);
+            if (isDark) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+
+        // Alpine.js 主题管理器
+        function themeManager() {
+            return {
+                theme: localStorage.getItem('theme') || 'system',
+                isDark: false,
+                showThemeMenu: false,
+
+                init() {
+                    this.updateTheme();
+                    // 监听系统主题变化
+                    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+                        if (this.theme === 'system') {
+                            this.updateTheme();
+                        }
+                    });
+                },
+
+                updateTheme() {
+                    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    if (this.theme === 'dark') {
+                        this.isDark = true;
+                    } else if (this.theme === 'light') {
+                        this.isDark = false;
+                    } else {
+                        this.isDark = prefersDark;
+                    }
+                },
+
+                setTheme(newTheme) {
+                    document.documentElement.classList.add('theme-transition');
+                    this.theme = newTheme;
+                    localStorage.setItem('theme', newTheme);
+                    this.updateTheme();
+                    this.showThemeMenu = false;
+                    setTimeout(() => {
+                        document.documentElement.classList.remove('theme-transition');
+                    }, 300);
+                },
+
+                get themeIcon() {
+                    if (this.theme === 'light') return 'light_mode';
+                    if (this.theme === 'dark') return 'dark_mode';
+                    return 'contrast';
+                },
+
+                get themeLabel() {
+                    if (this.theme === 'light') return '亮色模式';
+                    if (this.theme === 'dark') return '暗色模式';
+                    return '跟随系统';
+                }
+            };
+        }
+    </script>
+
+    <!-- 主题切换按钮（固定在右上角） -->
+    <div class="fixed top-4 right-4 z-50">
+        <div class="relative" x-data="{ open: false }">
+            <button @click="open = !open"
+                    class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all
+                           bg-white/80 text-slate-600 border border-slate-200 shadow-sm backdrop-blur
+                           hover:bg-white hover:text-slate-900 hover:shadow
+                           dark:bg-slate-800/80 dark:text-slate-300 dark:border-slate-700
+                           dark:hover:bg-slate-800 dark:hover:text-white">
+                <span class="material-symbols-outlined text-lg" x-text="themeIcon">contrast</span>
+                <span x-text="themeLabel">跟随系统</span>
+                <span class="material-symbols-outlined text-lg transition-transform" :class="open ? 'rotate-180' : ''">expand_more</span>
+            </button>
+
+            <!-- 下拉菜单 -->
+            <div x-show="open"
+                 x-cloak
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 translate-y-1"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100 translate-y-0"
+                 x-transition:leave-end="opacity-0 translate-y-1"
+                 @click.outside="open = false"
+                 class="absolute right-0 mt-2 w-48 rounded-lg shadow-lg overflow-hidden
+                        bg-white border border-slate-200
+                        dark:bg-slate-800 dark:border-slate-700">
+                <button @click="setTheme('light'); open = false"
+                        class="flex items-center w-full px-4 py-3 text-sm transition-colors
+                               hover:bg-slate-100 dark:hover:bg-slate-700"
+                        :class="theme === 'light' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'">
+                    <span class="material-symbols-outlined text-lg w-6">light_mode</span>
+                    <span class="flex-1 text-left ml-3">亮色模式</span>
+                    <span class="material-symbols-outlined text-lg w-6 text-blue-600 dark:text-blue-400" x-show="theme === 'light'">check</span>
+                    <span class="w-6" x-show="theme !== 'light'"></span>
+                </button>
+                <button @click="setTheme('dark'); open = false"
+                        class="flex items-center w-full px-4 py-3 text-sm transition-colors
+                               hover:bg-slate-100 dark:hover:bg-slate-700"
+                        :class="theme === 'dark' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'">
+                    <span class="material-symbols-outlined text-lg w-6">dark_mode</span>
+                    <span class="flex-1 text-left ml-3">暗色模式</span>
+                    <span class="material-symbols-outlined text-lg w-6 text-blue-600 dark:text-blue-400" x-show="theme === 'dark'">check</span>
+                    <span class="w-6" x-show="theme !== 'dark'"></span>
+                </button>
+                <button @click="setTheme('system'); open = false"
+                        class="flex items-center w-full px-4 py-3 text-sm transition-colors
+                               hover:bg-slate-100 dark:hover:bg-slate-700"
+                        :class="theme === 'system' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'">
+                    <span class="material-symbols-outlined text-lg w-6">contrast</span>
+                    <span class="flex-1 text-left ml-3">跟随系统</span>
+                    <span class="material-symbols-outlined text-lg w-6 text-blue-600 dark:text-blue-400" x-show="theme === 'system'">check</span>
+                    <span class="w-6" x-show="theme !== 'system'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {% block content %}{% endblock %}
 
     {% block extra_js %}{% endblock %}
 </body>

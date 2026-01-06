@@ -43,9 +43,11 @@ class SubnetAdmin(admin.ModelAdmin):
         else:
             color = "green"
 
+        # format_html 不支持格式说明符，需要先格式化好
+        percentage_str = f"{percentage:.1f}"
         return format_html(
-            '<span style="color: {};">{}/{} ({:.1f}%)</span>',
-            color, allocated, total, percentage
+            '<span style="color: {};">{}/{} ({}%)</span>',
+            color, allocated, total, percentage_str
         )
     usage_display.short_description = "使用率"
 

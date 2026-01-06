@@ -89,6 +89,8 @@ class IPAllocationService:
                 AuditLog.objects.create(
                     user=user,
                     action="allocate",
+                    subnet=ip.subnet,
+                    subnet_network=ip.subnet.network,
                     ip_address=ip.address,
                     hostname=hostname,
                     mac_address=mac_address,
@@ -96,7 +98,6 @@ class IPAllocationService:
                         "device_type": device_type,
                         "department": department,
                         "responsible_person": responsible_person,
-                        "subnet": ip.subnet.network,
                     }
                 )
 
@@ -212,6 +213,8 @@ class IPAllocationService:
             ip.device_type = ""
             ip.department = ""
             ip.responsible_person = ""
+            ip.building = ""
+            ip.floor = None
             ip.notes = ""
 
         ip.save()
@@ -220,13 +223,14 @@ class IPAllocationService:
         AuditLog.objects.create(
             user=user,
             action="release",
+            subnet=ip.subnet,
+            subnet_network=ip.subnet.network,
             ip_address=ip.address,
             hostname=old_hostname,
             mac_address=old_mac,
             details={
                 "device_type": old_device_type,
                 "keep_info": keep_info,
-                "subnet": ip.subnet.network,
             }
         )
 
@@ -313,15 +317,56 @@ class ConflictDetectionService:
         except IpAddress.DoesNotExist:
             return None
 
-        # 如果IP未分配，更新MAC地址
+        # 如果IP未分配（available），发现有MAC时标记为已占用
         if ip.status == "available":
             ip.mac_address = scanned_mac
             ip.previous_mac_address = scanned_mac
+            ip.status = "occupied"  # 标记为已占用
             ip.save()
+
+            # 记录审计日志 - 发现新设备
+            AuditLog.objects.create(
+                user=None,  # 系统自动检测
+                action="device_discovered",
+                subnet=ip.subnet,
+                subnet_network=ip.subnet.network,
+                ip_address=ip.address,
+                mac_address=scanned_mac,
+                details={
+                    "scan_source": scan_source,
+                    "previous_status": "available",
+                    "new_status": "occupied",
+                }
+            )
             return None
 
-        # 如果已分配，检查MAC是否变化
-        if ip.mac_address and ip.mac_address != scanned_mac:
+        # 如果是已占用状态，检查MAC是否变化
+        if ip.status == "occupied":
+            if ip.mac_address != scanned_mac:
+                # MAC地址变化，更新为新的MAC（可能是设备更换）
+                old_mac = ip.mac_address
+                ip.previous_mac_address = old_mac
+                ip.mac_address = scanned_mac
+                ip.save()
+
+                # 记录审计日志 - 设备更换
+                AuditLog.objects.create(
+                    user=None,
+                    action="device_changed",
+                    subnet=ip.subnet,
+                    subnet_network=ip.subnet.network,
+                    ip_address=ip.address,
+                    mac_address=scanned_mac,
+                    details={
+                        "old_mac": old_mac,
+                        "new_mac": scanned_mac,
+                        "scan_source": scan_source,
+                    }
+                )
+            return None
+
+        # 如果已分配（allocated），检查MAC是否变化
+        if ip.status == "allocated" and ip.mac_address and ip.mac_address != scanned_mac:
             # 检测到MAC地址变化 - 可能是冲突
             ip.status = "conflict"
             ip.conflict_detected_at = timezone.now()
@@ -332,6 +377,8 @@ class ConflictDetectionService:
             AuditLog.objects.create(
                 user=None,  # 系统自动检测
                 action="conflict_detected",
+                subnet=ip.subnet,
+                subnet_network=ip.subnet.network,
                 ip_address=ip.address,
                 hostname=ip.hostname,
                 mac_address=scanned_mac,
@@ -339,7 +386,6 @@ class ConflictDetectionService:
                     "old_mac": ip.mac_address,
                     "new_mac": scanned_mac,
                     "scan_source": scan_source,
-                    "subnet": ip.subnet.network,
                 }
             )
 
@@ -348,11 +394,13 @@ class ConflictDetectionService:
         return None
 
     @classmethod
+    @transaction.atomic
     def resolve_conflict(
         cls,
         ip_id: int,
         user: User,
-        resolution: str = "keep_current"
+        resolution: str = "keep_current",
+        scanned_mac: str = None
     ) -> IpAddress:
         """
         解决IP冲突
@@ -361,17 +409,22 @@ class ConflictDetectionService:
             ip_id: IP地址记录ID
             user: 操作用户
             resolution: 解决方案（keep_current保留当前/update_mac更新MAC/release释放）
+            scanned_mac: 扫描到的MAC地址（update_mac时使用）
 
         Returns:
             解决后的IP对象
         """
         try:
-            ip = IpAddress.objects.select_for_update().get(pk=ip_id)
+            ip = IpAddress.objects.select_for_update().select_related('subnet').get(pk=ip_id)
         except IpAddress.DoesNotExist as e:
             raise ValidationError(f"IP地址记录不存在: ID={ip_id}") from e
 
         if ip.status != "conflict":
             raise ValidationError(f"IP地址 {ip.address} 不处于冲突状态")
+
+        # 记录旧值用于审计
+        old_mac = ip.mac_address
+        old_status = ip.status
 
         if resolution == "keep_current":
             # 保留当前配置，恢复为已分配状态
@@ -379,9 +432,14 @@ class ConflictDetectionService:
             ip.conflict_detected_at = None
 
         elif resolution == "update_mac":
-            # 更新为扫描到的MAC（存储在previous_mac_address）
+            # 更新为扫描到的MAC地址
+            new_mac = scanned_mac or ip.previous_mac_address
+            if not new_mac:
+                raise ValidationError("更新MAC地址时需要提供 scanned_mac 参数")
+
+            ip.previous_mac_address = ip.mac_address  # 保存旧MAC
+            ip.mac_address = new_mac                   # 更新为新MAC
             ip.status = "allocated"
-            # MAC已在检测时更新，这里只需恢复状态
             ip.conflict_detected_at = None
 
         elif resolution == "release":
@@ -393,15 +451,23 @@ class ConflictDetectionService:
 
         ip.save()
 
-        # 记录审计日志
+        # 记录详细的审计日志
         AuditLog.objects.create(
             user=user,
             action="update",
+            subnet=ip.subnet,
+            subnet_network=ip.subnet.network if ip.subnet else None,
             ip_address=ip.address,
             hostname=ip.hostname,
             mac_address=ip.mac_address,
             details={
+                "operation": "resolve_conflict",
                 "resolution": resolution,
+                "old_status": old_status,
+                "new_status": ip.status,
+                "old_mac": old_mac,
+                "new_mac": ip.mac_address,
+                "scanned_mac": scanned_mac,
                 "conflict_resolved": True,
             }
         )

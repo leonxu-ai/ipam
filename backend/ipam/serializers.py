@@ -15,7 +15,8 @@ class SubnetSerializer(serializers.ModelSerializer):
         model = Subnet
         fields = [
             'id', 'network', 'gateway', 'netmask', 'vlan_id',
-            'description', 'created_at', 'updated_at', 'usage_stats'
+            'description', 'building', 'floor', 'is_global',
+            'created_at', 'updated_at', 'usage_stats'
         ]
         read_only_fields = ['created_at', 'updated_at', 'usage_stats']
 
@@ -84,6 +85,7 @@ class NetworkDeviceSerializer(serializers.ModelSerializer):
     """网络设备序列化器"""
 
     snmp_version_display = serializers.CharField(source='get_snmp_version_display', read_only=True)
+    device_type_display = serializers.CharField(source='get_device_type_display', read_only=True)
 
     # 明文密码字段（仅写入）
     snmp_auth_password = serializers.CharField(
@@ -102,10 +104,12 @@ class NetworkDeviceSerializer(serializers.ModelSerializer):
     class Meta:
         model = NetworkDevice
         fields = [
-            'id', 'name', 'ip_address', 'snmp_version', 'snmp_version_display',
+            'id', 'name', 'ip_address', 'device_type', 'device_type_display',
+            'description', 'snmp_version', 'snmp_version_display',
             'snmp_community', 'snmp_username',
             'snmp_auth_password', 'snmp_priv_password',  # 写入字段
-            'enabled', 'last_scan_at', 'last_scan_status', 'last_scan_error',
+            'enabled', 'scan_interval_minutes',
+            'last_scan_at', 'last_scan_status', 'last_scan_error',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -135,7 +139,13 @@ class NetworkDeviceSerializer(serializers.ModelSerializer):
         auth_password = validated_data.pop('snmp_auth_password', None)
         priv_password = validated_data.pop('snmp_priv_password', None)
 
+        # 敏感字段：如果为空则保持原值
+        sensitive_fields = ['snmp_community']
+
         for attr, value in validated_data.items():
+            if attr in sensitive_fields and not value:
+                # 敏感字段为空时保持原值
+                continue
             setattr(instance, attr, value)
 
         if auth_password:
@@ -150,15 +160,23 @@ class NetworkDeviceSerializer(serializers.ModelSerializer):
 class AuditLogSerializer(serializers.ModelSerializer):
     """审计日志序列化器"""
 
-    user_username = serializers.CharField(source='user.username', read_only=True)
+    user_username = serializers.CharField(
+        source='user.username',
+        read_only=True,
+        default=''
+    )
     action_display = serializers.CharField(source='get_action_display', read_only=True)
+    display_message = serializers.CharField(source='get_display_message', read_only=True)
+    subnet_display = serializers.CharField(source='get_subnet_display', read_only=True)
 
     class Meta:
         model = AuditLog
         fields = [
             'id', 'timestamp', 'user', 'user_username',
-            'action', 'action_display',
-            'ip_address', 'hostname', 'mac_address', 'details'
+            'action', 'action_display', 'display_message',
+            'ip_address', 'hostname', 'mac_address',
+            'subnet', 'subnet_network', 'subnet_display',
+            'details'
         ]
         read_only_fields = '__all__'  # 审计日志完全只读
 

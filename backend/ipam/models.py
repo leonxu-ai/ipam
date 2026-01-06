@@ -104,6 +104,27 @@ class Subnet(models.Model):
         blank=True,
         verbose_name="描述",
     )
+    # 楼栋和楼层信息
+    building = models.CharField(
+        max_length=10,
+        blank=True,
+        verbose_name="楼栋",
+        help_text="例如: M1, M2, M3",
+        db_index=True,
+    )
+    floor = models.IntegerField(
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(1), MaxValueValidator(10)],
+        verbose_name="楼层",
+        db_index=True,
+    )
+    is_global = models.BooleanField(
+        default=False,
+        verbose_name="全局子网",
+        help_text="标记为全局子网，所有用户可见可用",
+        db_index=True,
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="创建时间",
@@ -170,16 +191,39 @@ class Subnet(models.Model):
             return net.num_addresses
         return net.num_addresses - 2
 
-    def get_usage_stats(self) -> dict[str, int]:
+    def get_usage_stats(self) -> dict[str, any]:
         """获取使用统计"""
         ips = self.ip_addresses.all()
+        total_ips = ips.count()
+        available_count = ips.filter(status="available").count()
+        occupied_count = ips.filter(status="occupied").count()
+        allocated_count = ips.filter(status="allocated").count()
+        reserved_count = ips.filter(status="reserved").count()
+        conflict_count = ips.filter(status="conflict").count()
+
+        # 计算使用率（已占用、已分配、保留都算使用中）
+        if total_ips > 0:
+            usage_rate = ((occupied_count + allocated_count + reserved_count) / total_ips) * 100
+        else:
+            usage_rate = 0.0
+
         return {
+            "total_ips": total_ips,
+            "usable_ips": self.usable_ips,
+            "available_count": available_count,
+            "occupied_count": occupied_count,
+            "allocated_count": allocated_count,
+            "reserved_count": reserved_count,
+            "conflict_count": conflict_count,
+            "usage_rate": round(usage_rate, 1),
+            # 兼容旧键名
             "total": self.total_ips,
             "usable": self.usable_ips,
-            "available": ips.filter(status="available").count(),
-            "allocated": ips.filter(status="allocated").count(),
-            "reserved": ips.filter(status="reserved").count(),
-            "conflict": ips.filter(status="conflict").count(),
+            "available": available_count,
+            "occupied": occupied_count,
+            "allocated": allocated_count,
+            "reserved": reserved_count,
+            "conflict": conflict_count,
         }
 
 
@@ -188,9 +232,29 @@ class IpAddress(models.Model):
 
     STATUS_CHOICES = [
         ("available", "可用"),
+        ("occupied", "已占用"),  # 扫描发现正在使用，但未在系统中分配
         ("allocated", "已分配"),
         ("reserved", "保留"),
         ("conflict", "冲突"),
+    ]
+
+    DEVICE_TYPE_CHOICES = [
+        ("server", "服务器"),
+        ("workstation", "工作站"),
+        ("printer", "打印机"),
+        ("network", "网络设备"),
+        ("clean_instrument", "洁净仪"),
+        ("iot", "物联网设备"),
+        ("camera", "监控摄像头"),
+        ("access_control", "门禁设备"),
+        ("plc", "PLC控制器"),
+        ("hmi", "触摸屏/HMI"),
+        ("robot", "机器人"),
+        ("agv", "AGV小车"),
+        ("scanner", "扫码枪"),
+        ("sensor", "传感器"),
+        ("wireless_controller", "无线控制器"),
+        ("other", "其他"),
     ]
 
     subnet = models.ForeignKey(
@@ -230,6 +294,7 @@ class IpAddress(models.Model):
     )
     device_type = models.CharField(
         max_length=100,
+        choices=DEVICE_TYPE_CHOICES,
         blank=True,
         verbose_name="设备类型",
         help_text="例如: 服务器、打印机、工控机",
@@ -243,6 +308,20 @@ class IpAddress(models.Model):
         max_length=100,
         blank=True,
         verbose_name="责任人",
+    )
+
+    # 位置信息（跟随分配的设备）
+    building = models.CharField(
+        max_length=10,
+        blank=True,
+        verbose_name="楼栋",
+        help_text="例如: M1, M2, M3",
+    )
+    floor = models.IntegerField(
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(1), MaxValueValidator(10)],
+        verbose_name="楼层",
     )
 
     # 分配信息
@@ -272,6 +351,22 @@ class IpAddress(models.Model):
         blank=True,
         verbose_name="之前的MAC地址",
         help_text="用于检测MAC地址变化",
+    )
+
+    # 扫描跟踪字段
+    consecutive_missing = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0, message="连续缺失次数不能为负数")],
+        verbose_name="连续缺失次数",
+        help_text="SNMP扫描中连续未发现该IP的次数",
+        db_index=True,
+    )
+    last_seen_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="最后发现时间",
+        help_text="SNMP扫描最后一次发现该IP在线的时间",
+        db_index=True,
     )
 
     # 备注
@@ -346,6 +441,12 @@ class IpAddress(models.Model):
         """保存前验证"""
         self.clean()
 
+        # MAC地址标准化为大写格式
+        if self.mac_address:
+            self.mac_address = self.mac_address.upper()
+        if self.previous_mac_address:
+            self.previous_mac_address = self.previous_mac_address.upper()
+
         # 自动设置分配时间
         if self.status == "allocated" and not self.allocated_at:
             self.allocated_at = timezone.now()
@@ -393,6 +494,93 @@ class IpAddress(models.Model):
 
         self.save()
 
+    def ping_test(self, timeout: int = 3, count: int = 3) -> dict:
+        """
+        执行 Ping 测试（Fat Model 方法）
+
+        Args:
+            timeout: 超时时间（秒），默认 3 秒
+            count: ping 次数，默认 3 次
+
+        Returns:
+            {
+                "success": bool,
+                "reachable": bool,
+                "response_time_ms": float | None,
+                "packet_loss": float,  # 丢包率 0-100
+                "message": str,
+            }
+        """
+        import subprocess
+        import platform
+        import re
+
+        result = {
+            "success": False,
+            "reachable": False,
+            "response_time_ms": None,
+            "packet_loss": 100.0,
+            "message": "",
+        }
+
+        try:
+            # 根据操作系统选择参数
+            system = platform.system().lower()
+            if system == "windows":
+                cmd = ["ping", "-n", str(count), "-w", str(timeout * 1000), self.address]
+            else:  # Linux/macOS
+                cmd = ["ping", "-c", str(count), "-W", str(timeout), self.address]
+
+            # 执行 ping 命令
+            process = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout * count + 5,  # 总超时
+            )
+
+            output = process.stdout + process.stderr
+            result["success"] = True
+
+            # 解析丢包率
+            loss_match = re.search(r"(\d+(?:\.\d+)?)[%％]", output)
+            if loss_match:
+                result["packet_loss"] = float(loss_match.group(1))
+
+            # 解析响应时间（取平均值）
+            # Linux: rtt min/avg/max/mdev = 0.123/0.456/0.789/0.012 ms
+            # Windows: 平均 = 123ms
+            avg_match = re.search(r"(?:avg|平均)[^=]*=\s*(\d+(?:\.\d+)?)", output, re.IGNORECASE)
+            if avg_match:
+                result["response_time_ms"] = float(avg_match.group(1))
+            else:
+                # 尝试匹配 time=xx.x ms 格式
+                time_matches = re.findall(r"time[<=]?(\d+(?:\.\d+)?)\s*ms", output, re.IGNORECASE)
+                if time_matches:
+                    times = [float(t) for t in time_matches]
+                    result["response_time_ms"] = round(sum(times) / len(times), 2)
+
+            # 判断是否可达
+            result["reachable"] = result["packet_loss"] < 100
+
+            if result["reachable"]:
+                if result["response_time_ms"]:
+                    result["message"] = f"可达，响应时间 {result['response_time_ms']} ms"
+                else:
+                    result["message"] = "可达"
+            else:
+                result["message"] = "不可达"
+
+        except subprocess.TimeoutExpired:
+            result["success"] = True
+            result["message"] = "请求超时"
+        except FileNotFoundError:
+            result["message"] = "ping 命令不可用"
+        except Exception as e:
+            result["message"] = f"执行错误: {str(e)[:100]}"
+
+        return result
+
 
 class NetworkDevice(models.Model):
     """网络设备模型（SNMP扫描目标）"""
@@ -400,6 +588,15 @@ class NetworkDevice(models.Model):
     SNMP_VERSION_CHOICES = [
         ("v2c", "SNMPv2c"),
         ("v3", "SNMPv3"),
+    ]
+
+    DEVICE_TYPE_CHOICES = [
+        ("switch", "交换机"),
+        ("router", "路由器"),
+        ("firewall", "防火墙"),
+        ("wireless_controller", "无线控制器"),
+        ("ap", "无线AP"),
+        ("other", "其他"),
     ]
 
     name = models.CharField(
@@ -413,6 +610,16 @@ class NetworkDevice(models.Model):
         unique=True,
         verbose_name="IP地址",
         db_index=True,
+    )
+    device_type = models.CharField(
+        max_length=50,
+        choices=DEVICE_TYPE_CHOICES,
+        default="switch",
+        verbose_name="设备类型",
+    )
+    description = models.TextField(
+        blank=True,
+        verbose_name="描述",
     )
     snmp_version = models.CharField(
         max_length=10,
@@ -452,6 +659,15 @@ class NetworkDevice(models.Model):
         default=True,
         verbose_name="启用扫描",
         db_index=True,
+    )
+    scan_interval_minutes = models.IntegerField(
+        default=30,
+        validators=[
+            MinValueValidator(1, message="扫描间隔至少为1分钟"),
+            MaxValueValidator(1440, message="扫描间隔最多为1440分钟(24小时)"),
+        ],
+        verbose_name="扫描间隔(分钟)",
+        help_text="自动扫描的时间间隔，范围: 1-1440分钟",
     )
     last_scan_at = models.DateTimeField(
         blank=True,
@@ -549,7 +765,11 @@ class AuditLog(models.Model):
         ("update_subnet", "更新子网"),
         ("delete_subnet", "删除子网"),
         ("snmp_scan", "SNMP扫描"),
+        ("scan", "网络扫描"),
         ("conflict_detected", "检测到冲突"),
+        ("conflict_resolved", "冲突已解决"),
+        ("device_discovered", "发现设备"),
+        ("device_changed", "设备变更"),
     ]
 
     timestamp = models.DateTimeField(
@@ -570,6 +790,22 @@ class AuditLog(models.Model):
         choices=ACTION_CHOICES,
         verbose_name="操作类型",
         db_index=True,
+    )
+
+    # 子网相关信息
+    subnet = models.ForeignKey(
+        Subnet,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_logs",
+        verbose_name="关联子网",
+    )
+    subnet_network = models.CharField(
+        max_length=43,
+        blank=True,
+        verbose_name="子网地址（快照）",
+        help_text="冗余存储，防止子网删除后丢失信息",
     )
 
     # IP相关信息（冗余存储，即使IP被删除也能查看历史）
@@ -622,3 +858,45 @@ class AuditLog(models.Model):
     def delete(self, *args, **kwargs) -> None:
         """禁止删除审计日志"""
         raise ValidationError("审计日志不可删除")
+
+    def get_display_message(self) -> str:
+        """生成用户友好的操作描述"""
+        # 获取子网显示文本
+        subnet_text = ""
+        if self.subnet:
+            subnet_text = self.subnet.network
+        elif self.subnet_network:
+            subnet_text = self.subnet_network
+        elif self.details and isinstance(self.details, dict) and "subnet" in self.details:
+            subnet_text = self.details["subnet"]
+
+        # 根据操作类型生成描述
+        messages = {
+            "allocate": f"分配 IP 地址 {self.ip_address}",
+            "release": f"释放 IP 地址 {self.ip_address}",
+            "update": f"更新 IP 地址 {self.ip_address} 信息",
+            "delete": f"删除 IP 地址 {self.ip_address}",
+            "create_subnet": f"创建子网 {subnet_text}",
+            "update_subnet": f"更新子网 {subnet_text} 信息",
+            "delete_subnet": f"删除子网 {subnet_text}",
+            "snmp_scan": "SNMP 扫描完成",
+            "conflict_detected": f"检测到 IP {self.ip_address} 的 MAC 地址冲突",
+        }
+
+        base_msg = messages.get(self.action, f"执行操作: {self.get_action_display()}")
+
+        # 添加主机名信息（如果有）
+        if self.hostname and self.action in ("allocate", "release", "update"):
+            base_msg += f" (主机名: {self.hostname})"
+
+        return base_msg
+
+    def get_subnet_display(self) -> str:
+        """获取子网显示文本"""
+        if self.subnet:
+            return self.subnet.network
+        elif self.subnet_network:
+            return f"{self.subnet_network} (已删除)"
+        elif self.details and isinstance(self.details, dict) and "subnet" in self.details:
+            return self.details["subnet"]
+        return ""

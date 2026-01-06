@@ -1,6 +1,6 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" x-data="themeManager()" :class="{ 'dark': isDark }">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,14 +8,176 @@
     <link rel="stylesheet" href="{% static 'css/fonts.css' %}">
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
     <script defer src="{% static 'js/alpine.min.js' %}"></script>
+    <style>
+        /* 主题过渡动画 */
+        html.theme-transition,
+        html.theme-transition *,
+        html.theme-transition *::before,
+        html.theme-transition *::after {
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease !important;
+        }
+    </style>
     {% block extra_css %}{% endblock %}
 </head>
-<body class="bg-slate-900 text-slate-100 font-sans antialiased">
+<body class="font-sans antialiased transition-colors duration-300
+             bg-slate-100 text-slate-900
+             dark:bg-slate-900 dark:text-slate-100">
+
+    <script>
+        // 在页面加载前立即设置主题，防止闪烁
+        (function() {
+            const saved = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const isDark = saved === 'dark' || (saved !== 'light' && prefersDark);
+            if (isDark) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+
+        // Alpine.js 主题管理器
+        function themeManager() {
+            return {
+                theme: localStorage.getItem('theme') || 'system',
+                isDark: false,
+                showHelpModal: false,
+
+                init() {
+                    this.updateTheme();
+                    // 监听系统主题变化
+                    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+                        if (this.theme === 'system') {
+                            this.updateTheme();
+                        }
+                    });
+                },
+
+                updateTheme() {
+                    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    if (this.theme === 'dark') {
+                        this.isDark = true;
+                    } else if (this.theme === 'light') {
+                        this.isDark = false;
+                    } else {
+                        this.isDark = prefersDark;
+                    }
+                },
+
+                setTheme(newTheme) {
+                    document.documentElement.classList.add('theme-transition');
+                    this.theme = newTheme;
+                    localStorage.setItem('theme', newTheme);
+                    this.updateTheme();
+                    setTimeout(() => {
+                        document.documentElement.classList.remove('theme-transition');
+                    }, 300);
+                },
+
+                cycleTheme() {
+                    const themes = ['system', 'light', 'dark'];
+                    const currentIndex = themes.indexOf(this.theme);
+                    const nextIndex = (currentIndex + 1) % themes.length;
+                    this.setTheme(themes[nextIndex]);
+                },
+
+                get themeIcon() {
+                    if (this.theme === 'light') return 'light_mode';
+                    if (this.theme === 'dark') return 'dark_mode';
+                    return 'contrast';
+                },
+
+                get themeLabel() {
+                    if (this.theme === 'light') return '亮色';
+                    if (this.theme === 'dark') return '暗色';
+                    return '跟随系统';
+                }
+            };
+        }
+
+        // ============ 全局 API 封装函数 ============
+        // 获取 CSRF Token
+        window.getCsrfToken = function() {
+            return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                   document.cookie.split('; ')
+                       .find(row => row.startsWith('csrftoken='))
+                       ?.split('=')[1] ||
+                   '';
+        };
+
+        // 统一的 API 请求函数，自动处理认证错误和 JSON 解析
+        window.apiFetch = async function(url, options = {}) {
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+
+            // 对于非安全方法添加 CSRF token
+            const unsafeMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
+            const method = (options.method || 'GET').toUpperCase();
+
+            if (unsafeMethods.includes(method)) {
+                headers['X-CSRFToken'] = window.getCsrfToken();
+            }
+
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers,
+                    credentials: 'same-origin'
+                });
+
+                // 先检查状态码再解析 JSON
+                if (response.status === 401) {
+                    // 会话过期，跳转登录
+                    await window.modal.alert({
+                        title: '会话过期',
+                        message: '会话已过期，请重新登录',
+                        type: 'warning'
+                    });
+                    window.location.href = '/login/?next=' + encodeURIComponent(window.location.pathname);
+                    throw new Error('会话已过期');
+                }
+
+                if (response.status === 403) {
+                    // 尝试解析错误信息
+                    let errorMsg = '无权限访问';
+                    try {
+                        const data = await response.json();
+                        errorMsg = data.message || data.detail || errorMsg;
+                    } catch (e) {}
+                    throw new Error(errorMsg);
+                }
+
+                // 处理其他错误
+                if (!response.ok) {
+                    let errorMsg = '请求失败';
+                    try {
+                        const data = await response.json();
+                        errorMsg = data.message || data.detail || errorMsg;
+                    } catch (e) {
+                        errorMsg = `HTTP ${response.status}`;
+                    }
+                    throw new Error(errorMsg);
+                }
+
+                return await response.json();
+
+            } catch (error) {
+                if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                    throw new Error('网络连接失败，请检查网络');
+                }
+                throw error;
+            }
+        };
+    </script>
+
     <div class="flex min-h-screen">
         <!-- 侧边栏 -->
-        <aside class="fixed left-0 top-0 h-full w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-40">
+        <aside class="fixed left-0 top-0 h-full w-64 flex flex-col z-40 transition-colors duration-300
+                      bg-white border-r border-slate-200
+                      dark:bg-slate-900 dark:border-slate-800">
             <!-- Logo区域 -->
-            <div class="flex items-center gap-3 px-5 py-5 border-b border-slate-800">
+            <div class="flex items-center gap-3 px-5 py-5 border-b transition-colors duration-300
+                        border-slate-200 dark:border-slate-800">
                 <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
                     <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
                         <circle cx="12" cy="12" r="3"/>
@@ -26,74 +188,152 @@
                         <path d="M12 7v2M12 15v2M7 12h2M15 12h2" stroke="currentColor" stroke-width="1.5"/>
                     </svg>
                 </div>
-                <span class="text-lg font-semibold text-white">中创新航</span>
+                <span class="text-lg font-semibold text-slate-900 dark:text-white">中创新航</span>
             </div>
 
             <!-- 导航菜单 -->
             <nav class="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-                <a href="{% url 'ipam:dashboard' %}"
+                <!-- ========== 普通用户菜单 ========== -->
+                <a href="{% url 'ipam:ip_allocate' %}"
                    class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
-                          {% if request.resolver_match.url_name == 'dashboard' %}
+                          {% if 'allocate' in request.resolver_match.url_name %}
                           bg-blue-600 text-white
                           {% else %}
-                          text-slate-400 hover:bg-slate-800 hover:text-white
+                          text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                          dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white
                           {% endif %}">
-                    <span class="material-symbols-outlined text-xl">dashboard</span>
-                    仪表板
+                    <span class="material-symbols-outlined text-xl">add_circle</span>
+                    IP 申请
                 </a>
-                <a href="{% url 'ipam:subnet_list' %}"
+                <a href="{% url 'ipam:my_allocations' %}"
                    class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
-                          {% if 'subnet' in request.resolver_match.url_name %}
+                          {% if request.resolver_match.url_name == 'my_allocations' %}
                           bg-blue-600 text-white
                           {% else %}
-                          text-slate-400 hover:bg-slate-800 hover:text-white
+                          text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                          dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white
                           {% endif %}">
-                    <span class="material-symbols-outlined text-xl">lan</span>
-                    子网管理
+                    <span class="material-symbols-outlined text-xl">list_alt</span>
+                    我的申请
                 </a>
-                <a href="{% url 'ipam:ip_list' %}"
+                <a href="{% url 'ipam:ping_test' %}"
                    class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
-                          {% if 'ip' in request.resolver_match.url_name %}
+                          {% if request.resolver_match.url_name == 'ping_test' %}
                           bg-blue-600 text-white
                           {% else %}
-                          text-slate-400 hover:bg-slate-800 hover:text-white
+                          text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                          dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white
                           {% endif %}">
-                    <span class="material-symbols-outlined text-xl">dns</span>
-                    IP 管理
+                    <span class="material-symbols-outlined text-xl">network_ping</span>
+                    Ping 测试
                 </a>
-                <a href="{% url 'ipam:device_list' %}"
-                   class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
-                          {% if 'device' in request.resolver_match.url_name %}
-                          bg-blue-600 text-white
-                          {% else %}
-                          text-slate-400 hover:bg-slate-800 hover:text-white
-                          {% endif %}">
-                    <span class="material-symbols-outlined text-xl">router</span>
-                    网络设备
-                </a>
-                <a href="{% url 'ipam:audit_log_list' %}"
-                   class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
-                          {% if 'audit' in request.resolver_match.url_name %}
-                          bg-blue-600 text-white
-                          {% else %}
-                          text-slate-400 hover:bg-slate-800 hover:text-white
-                          {% endif %}">
-                    <span class="material-symbols-outlined text-xl">history</span>
-                    审计日志
-                </a>
+
+                {% if request.user.is_staff %}
+                <!-- ========== 管理员菜单 ========== -->
+                <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                    <p class="px-4 py-2 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">管理功能</p>
+                    <a href="{% url 'ipam:dashboard' %}"
+                       class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                              {% if request.resolver_match.url_name == 'dashboard' %}
+                              bg-blue-600 text-white
+                              {% else %}
+                              text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                              dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white
+                              {% endif %}">
+                        <span class="material-symbols-outlined text-xl">dashboard</span>
+                        仪表板
+                    </a>
+                    <a href="{% url 'ipam:subnet_list' %}"
+                       class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                              {% if 'subnet' in request.resolver_match.url_name %}
+                              bg-blue-600 text-white
+                              {% else %}
+                              text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                              dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white
+                              {% endif %}">
+                        <span class="material-symbols-outlined text-xl">lan</span>
+                        子网管理
+                    </a>
+                    <a href="{% url 'ipam:ip_list' %}"
+                       class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                              {% if 'ip_list' in request.resolver_match.url_name or 'ip_detail' in request.resolver_match.url_name %}
+                              bg-blue-600 text-white
+                              {% else %}
+                              text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                              dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white
+                              {% endif %}">
+                        <span class="material-symbols-outlined text-xl">dns</span>
+                        IP 管理
+                    </a>
+                    <a href="{% url 'ipam:device_list' %}"
+                       class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                              {% if 'device' in request.resolver_match.url_name %}
+                              bg-blue-600 text-white
+                              {% else %}
+                              text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                              dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white
+                              {% endif %}">
+                        <span class="material-symbols-outlined text-xl">router</span>
+                        网络设备
+                    </a>
+                    <a href="{% url 'ipam:audit_log_list' %}"
+                       class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                              {% if 'audit' in request.resolver_match.url_name %}
+                              bg-blue-600 text-white
+                              {% else %}
+                              text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                              dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white
+                              {% endif %}">
+                        <span class="material-symbols-outlined text-xl">history</span>
+                        审计日志
+                    </a>
+                    <a href="{% url 'ipam:user_list' %}"
+                       class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                              {% if 'user' in request.resolver_match.url_name %}
+                              bg-blue-600 text-white
+                              {% else %}
+                              text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                              dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white
+                              {% endif %}">
+                        <span class="material-symbols-outlined text-xl">group</span>
+                        用户管理
+                    </a>
+                </div>
+                {% endif %}
+
+                {% if request.user.is_superuser %}
+                <!-- ========== 超级管理员菜单 ========== -->
+                <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                    <p class="px-4 py-2 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">系统</p>
+                    <a href="{% url 'admin:index' %}"
+                       class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
+                              text-slate-600 hover:bg-slate-100 hover:text-slate-900
+                              dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white">
+                        <span class="material-symbols-outlined text-xl">settings</span>
+                        Django Admin
+                    </a>
+                </div>
+                {% endif %}
             </nav>
 
             <!-- 用户信息 -->
-            <div class="border-t border-slate-800 p-4">
+            <div class="border-t p-4 transition-colors duration-300
+                        border-slate-200 dark:border-slate-800">
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-slate-700 rounded-full flex items-center justify-center text-slate-300">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center transition-colors
+                                bg-slate-200 text-slate-600
+                                dark:bg-slate-700 dark:text-slate-300">
                         <span class="material-symbols-outlined">person</span>
                     </div>
                     <div class="flex-1 min-w-0">
-                        <p class="text-sm font-medium text-white truncate">{{ request.user.username }}</p>
-                        <p class="text-xs text-slate-500">网络管理员</p>
+                        <p class="text-sm font-medium truncate text-slate-900 dark:text-white">{{ request.user.username }}</p>
+                        <p class="text-xs text-slate-500">{% if request.user.is_superuser %}超级管理员{% elif request.user.is_staff %}管理员{% else %}普通用户{% endif %}</p>
                     </div>
-                    <a href="{% url 'logout' %}" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors" title="退出登录">
+                    <a href="{% url 'logout' %}"
+                       class="p-2 rounded-lg transition-colors
+                              text-slate-400 hover:text-slate-600 hover:bg-slate-100
+                              dark:hover:text-white dark:hover:bg-slate-800"
+                       title="退出登录">
                         <span class="material-symbols-outlined text-xl">logout</span>
                     </a>
                 </div>
@@ -103,33 +343,41 @@
         <!-- 主内容区 -->
         <main class="flex-1 ml-64">
             <!-- 顶部导航栏 -->
-            <header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800">
+            <header class="sticky top-0 z-30 backdrop-blur border-b transition-colors duration-300
+                           bg-white/95 border-slate-200
+                           dark:bg-slate-900/95 dark:border-slate-800">
                 <div class="flex items-center justify-between px-6 py-4">
                     <div class="flex items-center gap-4">
-                        <h1 class="text-xl font-semibold text-white">{% block page_title %}网络资源概览{% endblock %}</h1>
+                        <h1 class="text-xl font-semibold text-slate-900 dark:text-white">{% block page_title %}网络资源概览{% endblock %}</h1>
                         {% block page_status %}
-                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            <span class="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+                                     bg-emerald-100 text-emerald-700 border border-emerald-200
+                                     dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
+                            <span class="w-1.5 h-1.5 bg-emerald-500 dark:bg-emerald-400 rounded-full"></span>
                             系统运行正常
                         </span>
                         {% endblock %}
                     </div>
-                    <div class="flex items-center gap-4">
-                        <!-- 搜索框 -->
-                        <div class="relative">
-                            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xl">search</span>
-                            <input type="text" placeholder="搜索 IP, 子网或设备..."
-                                   class="w-72 pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        </div>
-                        <!-- 通知按钮 -->
-                        <button class="relative p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
-                            <span class="material-symbols-outlined text-xl">notifications</span>
-                            {% if unread_notifications %}
-                            <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                            {% endif %}
+                    <div class="flex items-center gap-3">
+                        <!-- 主题切换按钮 -->
+                        <button @click="cycleTheme()"
+                                class="relative p-2 rounded-lg transition-colors group
+                                       text-slate-500 hover:text-slate-700 hover:bg-slate-100
+                                       dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
+                                :title="'当前: ' + themeLabel + ' (点击切换)'">
+                            <span class="material-symbols-outlined text-xl" x-text="themeIcon">contrast</span>
+                            <!-- 下拉提示 -->
+                            <span class="absolute -bottom-8 left-1/2 -translate-x-1/2 px-2 py-1 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity
+                                         bg-slate-800 text-white dark:bg-slate-700"
+                                  x-text="themeLabel"></span>
                         </button>
+
                         <!-- 帮助按钮 -->
-                        <button class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
+                        <button @click="showHelpModal = true"
+                                class="p-2 rounded-lg transition-colors
+                                       text-slate-500 hover:text-slate-700 hover:bg-slate-100
+                                       dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
+                                title="帮助与支持">
                             <span class="material-symbols-outlined text-xl">help</span>
                         </button>
                     </div>
@@ -141,7 +389,16 @@
                 {% if messages %}
                 <div class="mb-6 space-y-3">
                     {% for message in messages %}
-                    <div class="flex items-center gap-3 p-4 rounded-lg {% if message.tags == 'error' %}bg-red-500/10 text-red-400 border border-red-500/20{% elif message.tags == 'success' %}bg-emerald-500/10 text-emerald-400 border border-emerald-500/20{% elif message.tags == 'warning' %}bg-amber-500/10 text-amber-400 border border-amber-500/20{% else %}bg-blue-500/10 text-blue-400 border border-blue-500/20{% endif %}">
+                    <div class="flex items-center gap-3 p-4 rounded-lg transition-colors
+                                {% if message.tags == 'error' %}
+                                bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20
+                                {% elif message.tags == 'success' %}
+                                bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20
+                                {% elif message.tags == 'warning' %}
+                                bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20
+                                {% else %}
+                                bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20
+                                {% endif %}">
                         <span class="material-symbols-outlined text-xl">
                             {% if message.tags == 'error' %}error{% elif message.tags == 'success' %}check_circle{% elif message.tags == 'warning' %}warning{% else %}info{% endif %}
                         </span>
@@ -154,6 +411,380 @@
                 {% block content %}{% endblock %}
             </div>
         </main>
+    </div>
+
+    <!-- 全局模态框容器 -->
+    <div id="modal-container"></div>
+
+    <script>
+    // 全局模态框管理器
+    window.modal = {
+        container: null,
+
+        init() {
+            this.container = document.getElementById('modal-container');
+        },
+
+        /**
+         * 显示确认对话框
+         * @param {Object|string} options - 配置选项或消息文本
+         * @returns {Promise<boolean>} - 用户选择结果
+         */
+        confirm(options) {
+            return new Promise((resolve) => {
+                const {
+                    title = '确认操作',
+                    message,
+                    type = 'warning',
+                    confirmText = '确定',
+                    cancelText = '取消',
+                    danger = false
+                } = typeof options === 'string' ? { message: options } : options;
+
+                const typeConfig = {
+                    info: { icon: 'info', iconBg: 'bg-blue-100 dark:bg-blue-900/30', iconColor: 'text-blue-600 dark:text-blue-400' },
+                    warning: { icon: 'warning', iconBg: 'bg-amber-100 dark:bg-amber-900/30', iconColor: 'text-amber-600 dark:text-amber-400' },
+                    error: { icon: 'error', iconBg: 'bg-red-100 dark:bg-red-900/30', iconColor: 'text-red-600 dark:text-red-400' },
+                    success: { icon: 'check_circle', iconBg: 'bg-green-100 dark:bg-green-900/30', iconColor: 'text-green-600 dark:text-green-400' }
+                };
+
+                const config = typeConfig[type] || typeConfig.warning;
+                const confirmBtnClass = danger
+                    ? 'bg-red-600 hover:bg-red-500 focus:ring-red-500'
+                    : 'bg-blue-600 hover:bg-blue-500 focus:ring-blue-500';
+
+                const html = `
+                    <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
+                         id="modal-overlay">
+                        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full
+                                    border border-slate-200 dark:border-slate-700
+                                    transform transition-all duration-200"
+                             id="modal-content">
+                            <!-- 头部 -->
+                            <div class="p-6 pb-4 flex items-start gap-4">
+                                <div class="flex-shrink-0 w-12 h-12 rounded-full ${config.iconBg} flex items-center justify-center">
+                                    <span class="material-symbols-outlined ${config.iconColor} text-2xl">${config.icon}</span>
+                                </div>
+                                <div class="flex-1 pt-1">
+                                    <h3 class="text-lg font-semibold text-slate-900 dark:text-white">${title}</h3>
+                                    <p class="mt-2 text-slate-600 dark:text-slate-400">${message}</p>
+                                </div>
+                            </div>
+
+                            <!-- 底部按钮 -->
+                            <div class="px-6 py-4 bg-slate-50 dark:bg-slate-900/50
+                                        border-t border-slate-200 dark:border-slate-700
+                                        flex justify-end gap-3 rounded-b-xl">
+                                ${cancelText ? `
+                                <button type="button" id="modal-cancel"
+                                        class="px-4 py-2 rounded-lg text-sm font-medium
+                                               bg-white dark:bg-slate-700
+                                               text-slate-700 dark:text-slate-300
+                                               border border-slate-300 dark:border-slate-600
+                                               hover:bg-slate-50 dark:hover:bg-slate-600
+                                               focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2
+                                               transition-colors">
+                                    ${cancelText}
+                                </button>` : ''}
+                                <button type="button" id="modal-confirm"
+                                        class="px-4 py-2 rounded-lg text-sm font-medium text-white
+                                               ${confirmBtnClass}
+                                               focus:outline-none focus:ring-2 focus:ring-offset-2
+                                               transition-colors">
+                                    ${confirmText}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                this.container.innerHTML = html;
+
+                const overlay = document.getElementById('modal-overlay');
+                const confirmBtn = document.getElementById('modal-confirm');
+                const cancelBtn = document.getElementById('modal-cancel');
+
+                const close = (result) => {
+                    overlay.classList.add('animate-fade-out');
+                    setTimeout(() => {
+                        this.container.innerHTML = '';
+                        resolve(result);
+                    }, 150);
+                };
+
+                confirmBtn.onclick = () => close(true);
+                if (cancelBtn) cancelBtn.onclick = () => close(false);
+                overlay.onclick = (e) => { if (e.target === overlay) close(false); };
+
+                const escHandler = (e) => {
+                    if (e.key === 'Escape') {
+                        document.removeEventListener('keydown', escHandler);
+                        close(false);
+                    }
+                };
+                document.addEventListener('keydown', escHandler);
+                confirmBtn.focus();
+            });
+        },
+
+        /**
+         * 显示提示消息（只有确定按钮）
+         */
+        alert(options) {
+            const opts = typeof options === 'string' ? { message: options } : options;
+            return this.confirm({ ...opts, cancelText: null });
+        },
+
+        /**
+         * 显示输入对话框
+         * @param {Object|string} options - 配置选项或提示文本
+         * @returns {Promise<string|null>} - 用户输入的值或 null（取消时）
+         */
+        prompt(options) {
+            return new Promise((resolve) => {
+                const {
+                    title = '请输入',
+                    message = '',
+                    placeholder = '',
+                    defaultValue = '',
+                    confirmText = '确定',
+                    cancelText = '取消',
+                    multiline = false
+                } = typeof options === 'string' ? { message: options } : options;
+
+                const inputHtml = multiline
+                    ? `<textarea id="modal-input" rows="3"
+                                class="w-full px-3 py-2 rounded-lg border
+                                       bg-white dark:bg-slate-700
+                                       border-slate-300 dark:border-slate-600
+                                       text-slate-900 dark:text-white
+                                       placeholder-slate-400 dark:placeholder-slate-500
+                                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="${placeholder}">${defaultValue}</textarea>`
+                    : `<input type="text" id="modal-input"
+                             class="w-full px-3 py-2 rounded-lg border
+                                    bg-white dark:bg-slate-700
+                                    border-slate-300 dark:border-slate-600
+                                    text-slate-900 dark:text-white
+                                    placeholder-slate-400 dark:placeholder-slate-500
+                                    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                             placeholder="${placeholder}"
+                             value="${defaultValue}">`;
+
+                const html = `
+                    <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
+                         id="modal-overlay">
+                        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full
+                                    border border-slate-200 dark:border-slate-700
+                                    transform transition-all duration-200">
+                            <!-- 头部 -->
+                            <div class="p-6 pb-4">
+                                <h3 class="text-lg font-semibold text-slate-900 dark:text-white">${title}</h3>
+                                ${message ? `<p class="mt-2 text-slate-600 dark:text-slate-400">${message}</p>` : ''}
+                                <div class="mt-4">
+                                    ${inputHtml}
+                                </div>
+                            </div>
+
+                            <!-- 底部按钮 -->
+                            <div class="px-6 py-4 bg-slate-50 dark:bg-slate-900/50
+                                        border-t border-slate-200 dark:border-slate-700
+                                        flex justify-end gap-3 rounded-b-xl">
+                                <button type="button" id="modal-cancel"
+                                        class="px-4 py-2 rounded-lg text-sm font-medium
+                                               bg-white dark:bg-slate-700
+                                               text-slate-700 dark:text-slate-300
+                                               border border-slate-300 dark:border-slate-600
+                                               hover:bg-slate-50 dark:hover:bg-slate-600
+                                               focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2
+                                               transition-colors">
+                                    ${cancelText}
+                                </button>
+                                <button type="button" id="modal-confirm"
+                                        class="px-4 py-2 rounded-lg text-sm font-medium text-white
+                                               bg-blue-600 hover:bg-blue-500
+                                               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                                               transition-colors">
+                                    ${confirmText}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                this.container.innerHTML = html;
+
+                const overlay = document.getElementById('modal-overlay');
+                const input = document.getElementById('modal-input');
+                const confirmBtn = document.getElementById('modal-confirm');
+                const cancelBtn = document.getElementById('modal-cancel');
+
+                const close = (value) => {
+                    overlay.classList.add('animate-fade-out');
+                    setTimeout(() => {
+                        this.container.innerHTML = '';
+                        resolve(value);
+                    }, 150);
+                };
+
+                confirmBtn.onclick = () => close(input.value);
+                cancelBtn.onclick = () => close(null);
+                overlay.onclick = (e) => { if (e.target === overlay) close(null); };
+
+                // Enter 确认，Escape 取消
+                input.onkeydown = (e) => {
+                    if (e.key === 'Enter' && !multiline) {
+                        e.preventDefault();
+                        close(input.value);
+                    } else if (e.key === 'Escape') {
+                        close(null);
+                    }
+                };
+
+                input.focus();
+                input.select();
+            });
+        },
+
+        /**
+         * 显示 Toast 消息（自动消失）
+         */
+        toast(message, type = 'info', duration = 3000) {
+            const typeConfig = {
+                success: { icon: 'check_circle', bg: 'bg-green-600' },
+                error: { icon: 'error', bg: 'bg-red-600' },
+                info: { icon: 'info', bg: 'bg-blue-600' },
+                warning: { icon: 'warning', bg: 'bg-amber-600' }
+            };
+
+            const config = typeConfig[type] || typeConfig.info;
+            const toast = document.createElement('div');
+            toast.className = `fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg
+                              ${config.bg} text-white transform transition-all duration-300
+                              translate-x-full opacity-0`;
+            toast.innerHTML = `
+                <span class="material-symbols-outlined">${config.icon}</span>
+                <span>${message}</span>
+            `;
+
+            document.body.appendChild(toast);
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-x-full', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('translate-x-full', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, duration);
+        }
+    };
+
+    // 页面加载时初始化
+    document.addEventListener('DOMContentLoaded', () => window.modal.init());
+    </script>
+
+    <style>
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+    }
+    .animate-fade-in { animation: fadeIn 0.15s ease-out; }
+    .animate-fade-out { animation: fadeOut 0.15s ease-in forwards; }
+    </style>
+
+    <!-- 帮助与支持弹窗 -->
+    <div x-show="showHelpModal" x-cloak
+         class="fixed inset-0 z-50 flex items-center justify-center p-4"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0">
+        <!-- 遮罩层 -->
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showHelpModal = false"></div>
+        <!-- 弹窗内容 -->
+        <div class="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-700"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 scale-95"
+             x-transition:enter-end="opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 scale-100"
+             x-transition:leave-end="opacity-0 scale-95"
+             @click.away="showHelpModal = false">
+            <!-- 标题栏 -->
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-blue-600 dark:text-blue-400">support_agent</span>
+                    帮助与支持
+                </h3>
+                <button @click="showHelpModal = false"
+                        class="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <!-- 内容区 -->
+            <div class="p-6 space-y-6">
+                <div class="text-center">
+                    <div class="w-16 h-16 mx-auto mb-4 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+                        <span class="material-symbols-outlined text-3xl text-blue-600 dark:text-blue-400">help</span>
+                    </div>
+                    <p class="text-slate-600 dark:text-slate-400 text-sm">
+                        如果您在使用过程中遇到任何问题或需要帮助，<br>请联系以下网络工程师获取支持。
+                    </p>
+                </div>
+
+                <div class="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-100 dark:border-slate-700">
+                    <p class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
+                        江苏基地网络工程师
+                    </p>
+                    <div class="space-y-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-outlined text-blue-600 dark:text-blue-400">person</span>
+                            </div>
+                            <div>
+                                <p class="font-medium text-slate-900 dark:text-white">徐梁</p>
+                                <p class="text-sm text-slate-500 dark:text-slate-400">网络工程师</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-outlined text-emerald-600 dark:text-emerald-400">person</span>
+                            </div>
+                            <div>
+                                <p class="font-medium text-slate-900 dark:text-white">王鸣</p>
+                                <p class="text-sm text-slate-500 dark:text-slate-400">网络工程师</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-outlined text-purple-600 dark:text-purple-400">person</span>
+                            </div>
+                            <div>
+                                <p class="font-medium text-slate-900 dark:text-white">段承志</p>
+                                <p class="text-sm text-slate-500 dark:text-slate-400">网络工程师</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-xs text-center text-slate-400 dark:text-slate-500">
+                    工作时间：周一至周五 8:30 - 17:30
+                </p>
+            </div>
+            <!-- 底部按钮 -->
+            <div class="px-6 py-4 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-700">
+                <button @click="showHelpModal = false"
+                        class="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
+                    我知道了
+                </button>
+            </div>
+        </div>
     </div>
 
     {% block extra_js %}{% endblock %}
